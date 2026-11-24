@@ -397,9 +397,9 @@ async function renderHome(app){
   const wrap=el('div',{class:'homewrap'},
     el('h1',{},'วันนี้จะทำอะไร'),
     el('div',{class:'cards'},
-      card('🖼️','ทำรายงานรูป (แบบง่าย)','เลือกโฟลเดอร์งาน 1 งาน ตัด/สลับรูป พิมพ์หัวเรื่อง แล้วบันทึกเป็น Word หรือใส่ต่อท้ายรายงานเดิม','easy'),
-      card('📚','ทำเล่มรายงาน','รวมไฟล์ PDF และไฟล์สแกน ใส่เลขหน้า ทำสารบัญ ได้ PDF เล่มเดียว','book',true),
-      card('📷','ทำหน้ารูปภาพ','จัดรูปถ่ายลงหน้า A4 มีหัวเรื่องและคำบรรยาย ส่งเข้าเล่ม หรือบันทึกเป็น PDF / Word','photo'),
+      card('📷','ทำรายงานรูป','เลือกลูกค้า → เลือกโฟลเดอร์รูป รูปลงหน้าให้เอง แล้วบันทึกเป็น Word / PDF หรือใส่ลง Word ที่มีอยู่','photo',true),
+      card('📚','ทำเล่มรายงาน','รวมไฟล์ PDF และไฟล์สแกน ใส่เลขหน้า ทำสารบัญ ได้ PDF เล่มเดียว','book'),
+
       card('🧾','แถบรูปแบ่งเครื่อง','เลือกรูปงานเป็นชุด คลิกแบ่งเครื่อง ใส่ชื่อจากรายชื่อ แล้วส่งออก Word รายเครื่อง','strip'),
       card('📝','รวมไฟล์ Word','รวมหลายไฟล์ .docx เป็นไฟล์เดียว คงการตั้งค่าหน้ากระดาษเดิม รูปไม่ขยับ','word'),
       card('📄','รวม / แยก PDF','รวมหลายไฟล์เป็นไฟล์เดียว หรือดึงบางหน้าออกมาเป็นไฟล์ใหม่','pdf')),
@@ -489,7 +489,7 @@ async function boot(){
   // ลิงก์ตรง: ...#easy = ทำรายงานรูปแบบง่าย · #strip = แถบรูปแบ่งเครื่อง (ลิงก์จากบอทไลน์ใช้ #easy)
   const start=(location.hash||'').replace('#','');
   go(VIEWS[start]&&['easy','strip','book','photo','word','pdf'].includes(start)?start:null);
-  if(start==='easy')return;   // แบบง่ายไม่ขึ้นหน้าต่างตั้งค่า/ประกาศรุ่น (คนใช้มือใหม่)
+  if(start==='easy'||start==='photo')return;   // แบบง่ายไม่ขึ้นหน้าต่างตั้งค่า/ประกาศรุ่น (คนใช้มือใหม่)
   if(ls.get('setupSeen',null)==null)await setupDialog(true);else await versionNotice();
 }
 
@@ -1190,6 +1190,9 @@ VIEWS.photo=(()=>{
   let S=Object.assign(clone(DEF),ls.get('photoCurrent',{}));
   let groups=[],active=0,step=0,zoom=ls.get('photoZoom',0.75),pid=1,quality=ls.get('photoQuality','std');
   let main,side,papers;
+  // โหมดง่าย (ค่าเริ่มต้น): หน้าเริ่มงาน (ลูกค้า + เลือกโฟลเดอร์) → หน้ากระดาษ + แถบขวาสั้น · "ตั้งค่าขั้นสูง" = หน้าจอเดิมทั้งหมด
+  let simple=ls.get('photoSimple',true),moveSel=null,trash=[],folderDir=null,detOpen=false;
+  const setSimple=v=>{simple=v;ls.set('photoSimple',v);moveSel=null;show(v?1:(total()?1:0))};
   const STEPS=['หัวเรื่อง','ใส่รูป','จัดหน้า','เสร็จ'];
   const PT=0.3528,LH=1.35,LGAP=4,TGAP=2.5,SAFE=2;
   const newGroup=()=>({title:S.title,sub:S.sub,photos:[],lay:clone(S.lay)});
@@ -1248,8 +1251,8 @@ VIEWS.photo=(()=>{
     main=el('div',{class:'main pmain'});side=el('div',{class:'side'});app.append(el('div',{class:'view'},main,side));
     if(!groups.length)groups=[newGroup()];migrateOld();loadLogoAR();show(step);
   }
-  function show(i){step=i;setSteps(STEPS,step,show,j=>j===1?total()>0:false);draw()}
-  function draw(){drawPapers();drawSide()}
+  function show(i){step=i;if(simple){$('#steps').innerHTML='';if(step<1)step=1}else setSteps(STEPS,step,show,j=>j===1?total()>0:false);draw()}
+  function draw(){if(!main)return;if(simple){drawSimple();return}side.style.display='';drawPapers();drawSide()}
   function drawPapers(){
     const G=geo(),st=document.documentElement.style,sc=main.scrollTop;
     st.setProperty('--pw',G.W+'mm');st.setProperty('--ph',G.H+'mm');st.setProperty('--mt','0');st.setProperty('--mb','0');st.setProperty('--ml','0');st.setProperty('--mr','0');
@@ -1259,15 +1262,17 @@ VIEWS.photo=(()=>{
     const bar=el('div',{class:'toolbar'},el('span',{class:'lbl'},`${total()} รูป · ${groups.length} กลุ่ม · ${allPages().length} หน้า`),el('span',{class:'sep'}),
       el('span',{class:'lbl'},'ซูม'),...[[.5,'50%'],[.65,'65%'],[.75,'75%'],[1,'100%']].map(([z,t])=>el('button',{class:'sm'+(zoom===z?' on':''),onclick:()=>{zoom=z;ls.set('photoZoom',z);drawPapers()}},t)));
     main.append(bar);
-    if(step===1)main.append(el('div',{class:'hint'},'👆 ลากรูปมาวางบนกลุ่มไหน รูปก็เข้ากลุ่มนั้น · ลากรูปบนหน้าเพื่อสลับลำดับ · คลิกหัวเรื่องหรือใต้รูปเพื่อพิมพ์'));
+    if(simple){if(moveSel)main.append(el('div',{class:'hint',style:'background:#fef3c7;border-color:#fcd34d;color:#78350f'},'🔀 เลือกรูปแล้ว → กดรูปที่ต้องการวางแทนที่ ',el('button',{class:'sm',onclick:()=>{moveSel=null;drawPapers()}},'ยกเลิก')));
+      else main.append(el('div',{class:'hint'},'✏️ กดที่หัวเรื่องบนหน้ากระดาษเพื่อแก้ · บนรูป: ✕ ลบ · ↻ หมุน · ✥ เลื่อนส่วนที่แสดง · ย้ายรูป: กดรูป แล้วกดตำแหน่งที่จะวาง'))}
+    else if(step===1)main.append(el('div',{class:'hint'},'👆 ลากรูปมาวางบนกลุ่มไหน รูปก็เข้ากลุ่มนั้น · ลากรูปบนหน้าเพื่อสลับลำดับ · คลิกหัวเรื่องหรือใต้รูปเพื่อพิมพ์'));
     if(step===2)main.append(el('div',{class:'hint'},'👆 คลิกหน้าของกลุ่มที่จะตั้งค่า แล้วปรับทางขวา · ปุ่ม ✥ บนรูปใช้เลื่อนส่วนที่แสดง'));
     papers=el('div',{style:`zoom:${zoom}`});main.append(papers);
     const pages=allPages();
     groups.forEach((g,gi)=>{
-      if(step===1)papers.append(el('button',{class:'gadd',onclick:()=>{groups.splice(gi,0,newGroup());active=gi;changed();draw()}},'＋ เพิ่มกลุ่มใหม่ตรงนี้'));
+      if(step===1&&!simple)papers.append(el('button',{class:'gadd',onclick:()=>{groups.splice(gi,0,newGroup());active=gi;changed();draw()}},'＋ เพิ่มกลุ่มใหม่ตรงนี้'));
       for(const P of pages.filter(p=>p.gi===gi))papers.append(paper(P));
     });
-    if(step===1)papers.append(el('button',{class:'gadd',onclick:()=>{groups.push(newGroup());active=groups.length-1;changed();draw();main.scrollTop=main.scrollHeight}},'＋ เพิ่มกลุ่มใหม่'));
+    if(step===1&&!simple)papers.append(el('button',{class:'gadd',onclick:()=>{groups.push(newGroup());active=groups.length-1;changed();draw();main.scrollTop=main.scrollHeight}},'＋ เพิ่มกลุ่มใหม่'));
     main.scrollTop=sc;
   }
   function paper(P){
@@ -1295,7 +1300,10 @@ VIEWS.photo=(()=>{
         im.append(el('div',{class:'tl'},
           S.fit==='cover'?el('button',{title:'เลื่อนส่วนที่แสดง (กดค้างแล้วลาก)',onmousedown:e=>pan(e,p,sl)},'✥'):null,
           el('button',{title:'หมุน 90°',onclick:e=>{e.stopPropagation();rotatePhoto(p)}},'↻'),
-          el('button',{title:'ลบรูป',onclick:e=>{e.stopPropagation();g.photos.splice(idx,1);URL.revokeObjectURL(p.url);changed();draw()}},'✕')));
+          el('button',{title:'ลบรูป (เอาคืนได้)',onclick:e=>{e.stopPropagation();g.photos.splice(idx,1);trash.push({g,idx,p});if(trash.length>50)URL.revokeObjectURL(trash.shift().p.url);moveSel=null;changed();draw()}},'✕')));
+        if(simple){if(moveSel&&moveSel.p===p)im.style.outline='4px solid #f59e0b';im.style.cursor='pointer';
+          im.addEventListener('click',()=>{if(!moveSel){moveSel={g,p};drawPapers();return}if(moveSel.p===p){moveSel=null;drawPapers();return}
+            const fi=moveSel.g.photos.indexOf(moveSel.p);if(fi<0){moveSel=null;drawPapers();return}moveSel.g.photos.splice(fi,1);g.photos.splice(Math.min(g.photos.indexOf(p)+(moveSel.g===g&&fi<idx?1:0),g.photos.length),0,moveSel.p);moveSel=null;changed();drawPapers()})}
         im.draggable=true;im.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/x-photo',`${gi}:${idx}`);e.dataTransfer.effectAllowed='move'});
       }else if(idx===g.photos.length)im.append(el('div',{class:'addh',onclick:()=>{active=gi;addPhotos()}},'+ เพิ่มรูป'));
       im.addEventListener('dragover',e=>{e.preventDefault();im.classList.add('over')});im.addEventListener('dragleave',()=>im.classList.remove('over'));
@@ -1321,8 +1329,65 @@ VIEWS.photo=(()=>{
     const up=()=>{removeEventListener('mousemove',mv);removeEventListener('mouseup',up);changed()};addEventListener('mousemove',mv);addEventListener('mouseup',up)}
 
   /* ---------- แผงขวา ---------- */
+  /* ---------- โหมดง่าย ---------- */
+  const EZCSS=`.pz-start{max-width:640px;margin:26px auto;padding:0 16px}.pz-start h2{font-size:20px;margin:18px 0 10px}.pz-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}.pz-card{text-align:left;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;cursor:pointer;font:inherit;height:auto!important}.pz-card b{display:block;font-size:16px;margin:4px 0 2px}.pz-card span{font-size:12.5px;color:var(--muted)}.pz-card.on{border:2px solid var(--accent);background:#eff6ff}.pz-card img{max-height:28px;max-width:120px;display:block}.pz-drop{border:2px dashed #93c5fd;background:#f8fbff;border-radius:14px;padding:22px;text-align:center}.pz-drop .big{font-size:19px;padding:14px 30px;height:auto}.pz-drop ol{text-align:left;max-width:520px;margin:12px auto 0;font-size:14.5px;line-height:1.8}.pz-adv{display:flex;justify-content:flex-end;margin-top:20px}.pz-side h3{font-size:14px;margin:14px 0 6px}.pz-side .chips{display:flex;gap:6px;flex-wrap:wrap}.pz-side .chips button{min-width:44px}.pz-side .chips button.on{background:var(--accent);color:#fff;border-color:var(--accent)}.pz-side .rw{display:flex;gap:8px;align-items:center;font-size:13px}.pz-side .rw span{min-width:92px}.pz-side .rw input{flex:1}.pz-side .rw b{min-width:44px;text-align:right}.pz-save button{width:100%;margin-top:8px}`;
+  function drawSimple(){
+    if(!$('#pzStyle'))document.head.append(el('style',{id:'pzStyle'},EZCSS));
+    if(!total()){side.style.display='none';startScreen();return}
+    side.style.display='';drawPapers();sideSimple()}
+  function startScreen(){
+    main.innerHTML='';const tpls=templates(),names=Object.keys(tpls).sort(natCmp);
+    const card=(name,t,isDef)=>{const L=(t&&t.lay)||LAY,on=isDef?!names.includes(S.name):S.name===name;
+      return el('button',{class:'pz-card'+(on?' on':''),onclick:()=>{if(isDef){S=clone(DEF);saveCur();groups=[newGroup()];loadLogoAR();draw()}else{applyTpl(t);groups=[newGroup()];draw()}}},
+        t&&t.logo?el('img',{src:t.logo}):el('span',{style:'font-size:22px'},isDef?'📄':'🏢'),el('b',{},name),el('span',{},`${L.cols*L.rows} รูป/หน้า`+(t&&t.logo?' · มีโลโก้':'')+(t&&t.cap?' · มีคำบรรยาย':'')))};
+    main.append(el('div',{class:'pz-start'},
+      el('h2',{},'① รายงานของลูกค้าไหน?'),
+      el('div',{class:'pz-cards'},...names.map(n=>card(n,tpls[n])),card('ทั่วไป (ค่าเริ่มต้น)',null,true)),
+      names.length?null:el('p',{class:'note'},'ยังไม่มีแบบของลูกค้า — ให้คนที่ดูแลกด “⚙ ตั้งค่าขั้นสูง” ตั้งหัวเรื่อง/โลโก้ แล้ว “บันทึกแม่แบบ” จะขึ้นเป็นการ์ดที่นี่'),
+      el('h2',{},'② เลือกโฟลเดอร์รูป'),
+      el('div',{class:'pz-drop'},el('button',{class:'pri big',onclick:addFolder},'📂 เลือกโฟลเดอร์รูป'),
+        el('ol',{},el('li',{},'ไปที่โฟลเดอร์ที่บอกไว้ แล้ว',el('b',{},'คลิกชื่อโฟลเดอร์ 1 ครั้ง'),' (ไม่ต้องเปิดเข้าไป)'),
+          el('li',{},'กดปุ่ม ',el('b',{},'Select Folder / เลือกโฟลเดอร์'),' (ถ้าเป็นปุ่ม ',el('b',{},'Upload'),' ก็กดได้)'),
+          el('li',{},'ถ้าถามต่อ กด ',el('b',{},'View files / ดูไฟล์'),' — ',el('u',{},'รูปไม่ได้ส่งขึ้นอินเทอร์เน็ต')))),
+      el('div',{class:'pz-adv'},el('button',{class:'sm',onclick:()=>setSimple(false)},'⚙ ตั้งค่าขั้นสูง'))));
+  }
+  function sideSimple(){
+    side.innerHTML='';const L=groups[active]?.lay||groups[0].lay;
+    const setAll=(k,v,full)=>{groups.forEach(g=>g.lay[k]=v);S.lay[k]=v;saveCur();full?draw():drawPapers()};
+    const chips=(opts,cur,f)=>el('div',{class:'chips'},...opts.map(([v,t])=>el('button',{class:'sm'+(cur(v)?' on':''),onclick:()=>f(v)},t)));
+    const rng=(k,a,b,unit,lab)=>{const o=el('b',{},L[k]+unit);return el('div',{class:'rw'},el('span',{},lab),el('input',{type:'range',min:a,max:b,step:1,value:L[k],oninput:e=>{o.textContent=e.target.value+unit;setAll(k,+e.target.value)}}),o)};
+    const np=allPages().length;
+    side.append(el('div',{class:'pz-side'},
+      el('h2',{style:'margin-bottom:2px'},S.name&&templates()[S.name]?S.name:'ทำรายงานรูป'),el('p',{class:'note',style:'margin:0'},`${total()} รูป · ${np} หน้า`+(groups.length>1?` · ${groups.length} กลุ่ม`:'')),
+      trash.length?el('button',{class:'sm',style:'margin-top:8px',onclick:()=>{const t=trash.pop();t.g.photos.splice(Math.min(t.idx,t.g.photos.length),0,t.p);changed();draw()}},`↶ เอารูปที่ลบคืน (${trash.length})`):null,
+      el('h3',{},'รูปต่อหน้า'),chips([[[2,2],'4'],[[2,3],'6'],[[3,3],'9'],[[4,3],'12']],([c,r])=>L.cols===c&&L.rows===r,([c,r])=>{groups.forEach(g=>{g.lay.cols=c;g.lay.rows=r});S.lay.cols=c;S.lay.rows=r;saveCur();draw()}),
+      el('details',{style:'margin-top:12px',open:detOpen,ontoggle:e=>{detOpen=e.target.open}},el('summary',{style:'cursor:pointer;font-weight:600;font-size:14px'},'📐 ขนาดรูปและระยะห่าง'),
+        el('h3',{},'ตำแหน่งกลุ่มรูป'),chips([['top','ชิดใต้หัวเรื่อง'],['center','กลางหน้า'],['spread','กระจายเต็มหน้า']],v=>L.pos===v,v=>setAll('pos',v,true)),
+        el('h3',{},'ขนาดรูป'),rng('k',50,100,'%','ขนาด'),
+        el('h3',{},'สัดส่วนรูป'),chips([['fill','เต็มช่อง'],['4:3','4:3'],['3:4','3:4'],['1:1','1:1']],v=>L.ratio===v,v=>setAll('ratio',v,true)),
+        el('h3',{},'ระยะห่าง (มม.)'),rng('hgap',0,20,'','ใต้หัวเรื่อง'),rng('rgap',0,20,'','ระหว่างแถว'),rng('cgap',0,20,'','ระหว่างคอลัมน์'),
+        el('h3',{},'การวางรูป'),chips([['cover','เต็มช่อง (ตัดขอบ)'],['contain','เห็นทั้งรูป']],v=>S.fit===v,v=>{S.fit=v;saveCur();draw()}),
+        el('label',{class:'ck',style:'margin-top:6px'},el('input',{type:'checkbox',checked:!!S.frame,onchange:e=>{S.frame=e.target.checked;saveCur();drawPapers()}}),'มีกรอบรูป'),
+        el('button',{class:'sm',style:'margin-top:8px',onclick:()=>{const d=clone(LAY),keep={cols:L.cols,rows:L.rows};groups.forEach(g=>g.lay=Object.assign(clone(d),keep));S.lay=Object.assign(clone(d),keep);S.fit=DEF.fit;S.frame=DEF.frame;saveCur();draw()}},'กลับเป็นค่าเริ่มต้น')),
+      el('div',{class:'grow'}),
+      el('div',{class:'pz-save'},el('button',{class:'pri big',onclick:saveDocx},'💾 บันทึก Word'),el('button',{class:'big',onclick:intoDocx},'📄 ใส่ลง Word ที่มีอยู่'),el('button',{onclick:()=>savePdf()},'บันทึกเป็น PDF')),
+      el('div',{style:'display:flex;gap:6px;margin-top:12px;justify-content:space-between'},
+        el('button',{class:'sm',onclick:async()=>{if(await confirmBox('เริ่มงานใหม่','ล้างรูปในหน้านี้ แล้วเลือกโฟลเดอร์ใหม่? (รูปต้นฉบับไม่ถูกลบ)','เริ่มใหม่')){reset();trash=[];await db.del('job:photo');draw()}}},'🗂 เริ่มงานใหม่'),
+        el('button',{class:'sm',onclick:()=>setSimple(false)},'⚙ ตั้งค่าขั้นสูง'))));
+    side.style.display='flex';side.style.flexDirection='column';
+  }
+  // บันทึก: หน้าต่าง Save เปิดที่โฟลเดอร์รูปของงาน (ถ้าได้) · ไม่ได้ → Downloads · แล้วบอกชื่อไฟล์/ที่อยู่ชัด ๆ
+  async function saveOut(blob,name,kind){
+    const T=kind==='pdf'?{description:'PDF',accept:{'application/pdf':['.pdf']}}:{description:'Word',accept:{'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}};
+    if(window.showSaveFilePicker){const o={suggestedName:name,types:[T]};if(folderDir)o.startIn=folderDir;
+      for(let k=0;k<2;k++){try{const fh=await window.showSaveFilePicker(o),w=await fh.createWritable();await w.write(blob);await w.close();return {name:fh.name,where:folderDir?`ปกติอยู่ในโฟลเดอร์รูป “${folderDir.name}” (หรือโฟลเดอร์ที่เลือกตอนบันทึก)`:'ในโฟลเดอร์ที่เลือกตอนบันทึก'}}
+        catch(e){if(e.name==='AbortError')return null;if(!o.startIn)break;delete o.startIn}}}
+    download(name,blob);return {name,where:'ในโฟลเดอร์ Downloads (ดาวน์โหลด) ของเครื่องนี้'}}
+  async function doneBox(r,extra){if(!r)return;const v=await dialog('บันทึกเสร็จแล้ว',el('div',{style:'text-align:center'},el('div',{style:'font-size:44px;color:#16a34a;line-height:1'},'✓'),el('p',{style:'font-size:17px;font-weight:600;word-break:break-all;margin:10px 0 4px'},'📄 '+r.name),el('p',{},r.where),extra?el('p',{class:'note'},extra):null,el('p',{class:'note'},'เปิดตรวจใน Word ก่อนส่งลูกค้า')),[['ทำงานต่อ',1],['เริ่มงานใหม่',2]]);
+    if(v===2){reset();trash=[];await db.del('job:photo');draw()}}
   function drawSide(){
     side.innerHTML='';
+    side.append(el('button',{class:'sm',style:'margin-bottom:8px;align-self:flex-start',onclick:()=>setSimple(true)},'← กลับโหมดง่าย'));
     if(step===0)side0();if(step===1)side1();if(step===2)side2();if(step===3)side3();
     side.append(el('div',{class:'grow'}),el('div',{class:'foot'},el('button',{disabled:step===0,onclick:()=>show(step-1)},'← ย้อน'),step<3?el('button',{class:'pri',onclick:()=>show(step+1)},'ถัดไป →'):null));
   }
@@ -1331,7 +1396,8 @@ VIEWS.photo=(()=>{
   function side0(){
     const tpls=templates(),sel=el('select',{onchange:()=>{if(!sel.value)return;applyTpl(tpls[sel.value]);}},el('option',{value:''},Object.keys(tpls).length?'— เลือกแม่แบบที่บันทึกไว้ —':'(ยังไม่มีแม่แบบ)'),...Object.keys(tpls).sort(natCmp).map(n=>el('option',{value:n},n)));
     const P=S.page,pg=(k,t)=>el('div',{},el('label',{class:'lb'},t),el('input',{type:'number',min:0,max:60,step:1,value:P[k],oninput:e=>{P[k]=Math.max(0,+e.target.value||0);S.from='';saveCur();drawPapers()}}));
-    side.append(el('h2',{},'1 หัวเรื่อง'),
+    side.append(el('button',{class:'pri big',style:'margin-bottom:12px',onclick:addFolder,title:'เลือกโฟลเดอร์งาน รูปทั้งหมดจะลงหน้าให้เอง เรียงตามเวลาถ่าย'},'📂 ใส่รูปทั้งโฟลเดอร์'),
+      el('h2',{},'1 หัวเรื่อง'),
       el('label',{class:'lb'},'แม่แบบหัวเรื่อง'),sel,
       el('div',{style:'display:flex;gap:6px;margin-top:6px;flex-wrap:wrap'},el('button',{class:'sm',onclick:saveTpl},'💾 บันทึกแม่แบบ'),el('button',{class:'sm',onclick:()=>{S=Object.assign(clone(DEF),{});saveCur();groups.forEach(g=>{if(!g.photos.length){g.title=S.title;g.sub=S.sub}});draw()}},'ใหม่'),el('button',{class:'sm',onclick:tplMenu},'อื่น ๆ…')),
       el('button',{class:'big',style:'margin-top:10px',onclick:fromWord},'📝 ดึงการตั้งค่าจากไฟล์ Word'),
@@ -1357,9 +1423,11 @@ VIEWS.photo=(()=>{
         el('span',{style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px'},`${gi+1}. ${g.title||'(ไม่มีหัวเรื่อง)'}`),el('span',{class:'note'},`${g.photos.length} รูป`),
         el('button',{title:'เลื่อนขึ้น',disabled:!gi,onclick:e=>{e.stopPropagation();[groups[gi-1],groups[gi]]=[groups[gi],groups[gi-1]];changed();draw()}},'▲'),
         el('button',{title:'ลบกลุ่ม',onclick:async e=>{e.stopPropagation();if(g.photos.length&&!await confirmBox('ลบกลุ่ม',`ลบกลุ่ม ${gi+1} พร้อมรูป ${g.photos.length} รูป?`,'ลบ'))return;groups.splice(gi,1);if(!groups.length)groups=[newGroup()];active=Math.min(active,groups.length-1);changed();draw()}},'✕')))),
-      el('button',{class:'pri big',style:'margin-top:10px',onclick:addPhotos},`➕ เพิ่มรูปเข้ากลุ่ม ${active+1}`),
-      el('div',{style:'display:flex;gap:6px;margin-top:8px'},el('button',{class:'sm',onclick:()=>{groups.push(newGroup());active=groups.length-1;changed();draw()}},'＋ กลุ่มใหม่'),
-        el('button',{class:'sm',onclick:()=>{groups.forEach(g=>g.photos.sort((a,b)=>natCmp(a.name,b.name)));changed();draw()}},'🔤 เรียงตามชื่อไฟล์')),
+      el('button',{class:'pri big',style:'margin-top:10px',onclick:addFolder,title:'ใส่รูปทั้งโฟลเดอร์ เรียงตามเวลาถ่าย · มีโฟลเดอร์ย่อย = แยกกลุ่มละโฟลเดอร์'},'📂 ใส่รูปทั้งโฟลเดอร์'),
+      el('button',{class:'big',style:'margin-top:8px',onclick:addPhotos},`➕ เพิ่มรูปทีละรูปเข้ากลุ่ม ${active+1}`),
+      el('div',{style:'display:flex;gap:6px;margin-top:8px;flex-wrap:wrap'},el('button',{class:'sm',onclick:()=>{groups.push(newGroup());active=groups.length-1;changed();draw()}},'＋ กลุ่มใหม่'),
+        el('button',{class:'sm',onclick:()=>{groups.forEach(g=>g.photos.sort((a,b)=>natCmp(a.name,b.name)));changed();draw()}},'🔤 เรียงตามชื่อไฟล์'),
+        el('button',{class:'sm',onclick:()=>{groups.forEach(g=>g.photos.sort((a,b)=>(a.t||0)-(b.t||0)||natCmp(a.name,b.name)));changed();draw()}},'🕘 เรียงตามเวลาถ่าย')),
       el('section',{},chk('capName','ใช้ชื่อไฟล์เป็นคำบรรยาย (รูปที่เพิ่มต่อจากนี้)')));
   }
   function side2(){
@@ -1418,6 +1486,28 @@ VIEWS.photo=(()=>{
     if(step===0)step=1;changed();show(step);
   }
   async function addPhotos(){const fs=await pickFiles('image/*',true);if(fs.length)addFiles(fs,active)}
+  /* ---------- ใส่รูปทั้งโฟลเดอร์ (เลือกโฟลเดอร์ครั้งเดียว ไม่ต้องเลือกรูปเอง) ----------
+     เรียงตามเวลาถ่าย (เวลาไฟล์) · รูปในโฟลเดอร์ย่อย = แยกกลุ่มละโฟลเดอร์ย่อย · กลุ่มที่เลือกอยู่ยังว่าง → ใส่กลุ่มนั้นก่อน */
+  const isImg=f=>/^image\//.test(f.type)||/\.(jpe?g|png|webp|bmp|gif|heic)$/i.test(f.name);
+  async function dirFiles(dh,pre,out){for await(const [n,h] of dh.entries()){if(n.startsWith('.'))continue;if(h.kind==='directory')await dirFiles(h,pre+n+'/',out);else{const f=await h.getFile();if(isImg(f))out.push({f,path:pre+n})}}return out}
+  async function addFolder(){
+    let items=[],root='';
+    if(window.showDirectoryPicker){let dh;try{dh=await window.showDirectoryPicker({id:'photofolder',mode:'read'})}catch(e){if(e.name==='AbortError')return}
+      if(dh){root=dh.name;folderDir=dh;items=await busy('กำลังอ่านรายชื่อรูปในโฟลเดอร์…',()=>dirFiles(dh,'',[]))}}
+    if(!root){const fs=await pickFolder('image/*');if(!fs.length)return;root=(fs[0].webkitRelativePath||'').split('/')[0]||'';items=fs.filter(isImg).map(f=>({f,path:(f.webkitRelativePath||f.name).split('/').slice(1).join('/')}))}
+    return loadFolder(items,root)}
+  async function loadFolder(items,root){
+    if(!items.length){toast(`ไม่พบรูปในโฟลเดอร์ “${root}”`,1);return}
+    const by=new Map();for(const it of items){const sub=it.path.includes('/')?it.path.slice(0,it.path.lastIndexOf('/')):'';if(!by.has(sub))by.set(sub,[]);by.get(sub).push(it.f)}
+    const keys=[...by.keys()].sort(natCmp);let first=true,n=0,bad=0;
+    await busy('กำลังโหลดรูป…',async set=>{for(const k of keys){
+      let gi=active;if(!(first&&groups[active]&&!groups[active].photos.length)){groups.push(newGroup());gi=groups.length-1}first=false;
+      const g=groups[gi],fs=by.get(k).sort((a,b)=>(a.lastModified-b.lastModified)||natCmp(a.name,b.name));
+      if(!g.title&&!S.title)g.title=(k?k.split('/').pop():root);   // ไม่มีหัวเรื่องหลัก → ใช้ชื่อโฟลเดอร์
+      for(const f of fs){set(`กำลังโหลดรูป ${++n}/${items.length}…`);try{const r=await shrink(f);const p=mk(r.blob,r.w,r.h,S.capName?f.name.replace(/\.[^.]+$/,''):'',f.name);p.t=f.lastModified;g.photos.push(p)}catch(e){bad++}}
+      active=gi}});
+    toast(`ใส่ ${items.length-bad} รูปจากโฟลเดอร์ “${root}”`+(keys.length>1?` · แยก ${keys.length} กลุ่มตามโฟลเดอร์ย่อย`:'')+(bad?` · เปิดไม่ได้ ${bad} ไฟล์ (HEIC ให้แปลงเป็น JPG ก่อน)`:''),!!bad);
+    if(step===0)step=1;changed();show(step)}
   async function rotatePhoto(p){const b=await decode(p.blob),c=el('canvas');c.width=b.height;c.height=b.width;const x=c.getContext('2d');x.translate(c.width/2,c.height/2);x.rotate(Math.PI/2);x.drawImage(b,-b.width/2,-b.height/2);
     const nb=await new Promise(r=>c.toBlob(r,'image/jpeg',.9));URL.revokeObjectURL(p.url);p.blob=nb;p.url=URL.createObjectURL(nb);[p.w,p.h]=[c.width,c.height];changed();drawPapers()}
   async function pickLogo(){const [f]=await pickFiles('image/*');if(!f)return;try{const r=await shrink(f,600,'image/png');S.logo=await b2d(r.blob);logoAR=r.w/r.h;saveCur();draw()}catch(e){toast('เปิดรูปโลโก้ไม่ได้',1)}}
@@ -1488,7 +1578,7 @@ VIEWS.photo=(()=>{
   }
   function checkFit(){const bad=groups.findIndex(g=>!slots(g,true,header(g)).ok);if(bad>=0){toast(`กลุ่ม ${bad+1}: หัวเรื่องยาวเกินไป ไม่เหลือที่ให้รูป`,1);active=bad;return false}return true}
   async function savePdf(){if(!total()){toast('ยังไม่มีรูป',1);return}if(!checkFit())return;
-    try{const bytes=await busy('กำลังสร้าง PDF…',buildPdf),blob=new Blob([bytes],{type:'application/pdf'});download(safeName(groups[0].title||'หน้ารูปภาพ')+'.pdf',blob);toast(`บันทึกแล้ว · ${fmtSize(blob.size)} (อยู่ในโฟลเดอร์ Downloads)`)}
+    try{const bytes=await busy('กำลังสร้าง PDF…',buildPdf),blob=new Blob([bytes],{type:'application/pdf'});await doneBox(await saveOut(blob,safeName(groups[0].title||'หน้ารูปภาพ')+'.pdf','pdf'),`ขนาดไฟล์ ${fmtSize(blob.size)}`)}
     catch(e){console.error(e);toast('สร้าง PDF ไม่สำเร็จ: '+(e.message||e),1)}}
   async function toBook(){if(!total()){toast('ยังไม่มีรูป',1);return}if(!checkFit())return;
     try{const bytes=await busy('กำลังสร้างหน้ารูป…',buildPdf);await VIEWS.book.addGenerated(`หน้ารูป_${safeName(groups[0].title||'รูปภาพ')}.pdf`,bytes);toast('ส่งหน้ารูปเข้าเล่มแล้ว (ต่อท้ายเล่ม ลากย้ายได้)')}
@@ -1542,7 +1632,7 @@ VIEWS.photo=(()=>{
   async function saveDocx(){
     if(!total()){toast('ยังไม่มีรูป',1);return}if(!checkFit())return;
     try{const blob=await busy('กำลังสร้างไฟล์ Word…',makeDocx);
-      download(safeName(groups[0].title||'หน้ารูปภาพ')+'.docx',blob);toast(`บันทึกเป็น Word แล้ว · ${fmtSize(blob.size)}`)}
+      await doneBox(await saveOut(blob,safeName(groups[0].title||'หน้ารูปภาพ')+'.docx'))}
     catch(e){console.error(e);toast('สร้างไฟล์ Word ไม่สำเร็จ: '+(e.message||e),1)}
   }
   async function makeDocx(set){
@@ -1564,7 +1654,7 @@ VIEWS.photo=(()=>{
     const marks=info.markers;let mode='end';
     if(marks.length){const r=await dialog('ใส่รูปลงไฟล์ Word',el('div',{},el('p',{},`พบเครื่องหมาย ${marks.join(' ')} ในไฟล์`),el('p',{class:'note'},'ใส่ตรงเครื่องหมาย: กลุ่มที่ 1 ไปแทน {{รูป:1}} และต่อ ๆ ไป กลุ่มที่ไม่มีเครื่องหมายจะต่อท้ายไฟล์')),[['ใส่ตรงเครื่องหมาย','mark'],['ต่อท้ายไฟล์ทั้งหมด','end'],['ยกเลิก',null]]);if(!r)return;mode=r}
     try{const blob=await busy('กำลังใส่รูปลงไฟล์ Word…',set=>makeInto(pkg,mode,set));
-      download(safeName(f.name)+'_มีรูป.docx',blob);toast(`ได้ไฟล์ ${safeName(f.name)}_มีรูป.docx แล้ว · ไฟล์เดิมไม่ถูกแก้ · ควรเปิดตรวจใน Word`)}
+      await doneBox(await saveOut(blob,safeName(f.name.replace(/\.docx$/i,''))+'_มีรูป.docx'),'ไฟล์เดิมไม่ถูกแก้ ได้เป็นไฟล์ใหม่')}
     catch(e){console.error(e);toast('ใส่รูปไม่สำเร็จ: '+(e.message||e),1)}
   }
   async function makeInto(pkg,mode,set){
@@ -1602,15 +1692,17 @@ VIEWS.photo=(()=>{
       for(const p of x.photos||[]){try{const bl=new Blob([d2u8(p.data)],{type:'image/jpeg'}),b=await decode(bl);g.photos.push(mk(bl,b.width,b.height,p.cap,p.name))}catch(e){}}groups.push(g)}
     if(!groups.length)groups=[newGroup()];changed();show(1);toast('เปิดไฟล์งานรุ่นเก่าแล้ว')}
 
-  const _dbg={st:()=>({S,groups,active}),set:o=>{if(o.S)Object.assign(S,o.S);if(o.lay)groups.forEach(g=>Object.assign(g.lay,o.lay));if('active' in o)active=o.active;draw()},
+  const _dbg={loadFolder,st:()=>({S,groups,active}),set:o=>{if(o.S)Object.assign(S,o.S);if(o.lay)groups.forEach(g=>Object.assign(g.lay,o.lay));if('active' in o)active=o.active;draw()},
     addFiles,buildPdf:()=>buildPdf(()=>{}),makeDocx:()=>makeDocx(()=>{}),makeInto:(pkg,mode)=>makeInto(pkg,mode,()=>{}),renderPage:(i,dpi)=>renderPage(allPages()[i],dpi),show,allPages};
-  return {title:'ทำหน้ารูปภาพ',enter,onDrop:fs=>addFiles(fs,active),resume,loadWork,loadOld,_dbg};
+  return {title:'ทำรายงานรูป',enter,onDrop:fs=>addFiles(fs,active),resume,loadWork,loadOld,_dbg};
 })();
 
 /* ================= แถบรูปแบ่งเครื่อง ================= */
 VIEWS.strip=(()=>{
   const COLORS=['#dbeafe','#dcfce7','#fef9c3','#fce7f3','#e0e7ff','#ffedd5','#ccfbf1','#f3e8ff'];
-  const CW=1638000,CH=2872800,BOXR=CW/CH,TINY='<w:rPr><w:rFonts w:ascii="Angsana New" w:eastAsia="Angsana New" w:hAnsi="Angsana New" w:cs="Angsana New"/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr>';
+  // ขนาดช่องรูป (EMU) เปลี่ยนตามจำนวนคอลัมน์×แถว (ค่าเริ่มต้น 4×3 = แบบรายงาน RX: รูป 4.55×7.98 ซม.)
+  let CW=1638000,CH=2872800,BOXR=CW/CH;
+  const TINY='<w:rPr><w:rFonts w:ascii="Angsana New" w:eastAsia="Angsana New" w:hAnsi="Angsana New" w:cs="Angsana New"/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr>';
   let all=[],photos=[],hidden=new Set(),cuts=new Set(),excluded=new Set(),names={},titles={},hdrMode='all',adj={},undoStack=[],machines='',template='การตรวจเช็คและล้างตะกรันเครื่อง HEAT PUMP รุ่น {รุ่น} โซน {ชื่อ}',logo=null;
   let root,main,side,status,loadId=0;
   // รูปแบบหัวเรื่อง + โลโก้ จำไว้ในเครื่องนี้ (ไม่ต้องตั้งใหม่ทุกงาน)
@@ -1618,20 +1710,28 @@ VIEWS.strip=(()=>{
   let fmt=Object.assign({font:'Angsana New',size:18,bold:true},ls.get('stripFmt',{}));if(!SIZES.includes(fmt.size))fmt.size=18;
   hdrMode=ls.get('stripHdr','all');
   try{const L=ls.get('stripLogo',null);if(L&&L.b64){const bytes=d2u8('data:,'+L.b64);logo={file:new File([bytes],'logo.'+L.ext,{type:L.ext==='png'?'image/png':'image/jpeg'}),width:L.w,height:L.h,bytes,ext:L.ext}}}catch(e){logo=null}
-  const saveFmt=()=>{ls.set('stripFmt',fmt);ls.set('stripHdr',hdrMode)};
+  // รูปต่อหน้า (คอลัมน์×แถว) · หน้า A4 ใช้ได้ 10545×15704 twips · เผื่อหัวเรื่อง 1793 (เท่าแบบเดิม) · ไม่มีหัวเรื่อง เผื่อ 150
+  const LAYS=[[4,3,'12 รูป (4×3) แบบเดิม'],[3,3,'9 รูป (3×3)'],[3,2,'6 รูป (3×2)'],[2,3,'6 รูป (2×3)'],[2,2,'4 รูป (2×2)'],[1,2,'2 รูป (1×2)'],[1,1,'1 รูป']];
+  let lay=Object.assign({cols:4,rows:3},ls.get('stripLay',{}));if(!LAYS.some(([c,r])=>c===lay.cols&&r===lay.rows))lay={cols:4,rows:3};
+  const PER=()=>lay.cols*lay.rows,TBLW=10545;
+  const geom=()=>{const rowH=Math.floor((15704-(hdrMode==='none'?150:1793))/lay.rows),cellW=Math.floor(TBLW/lay.cols);return {rowH,cellW,pw:cellW-57,ph:rowH-113}};
+  function applyLay(){const G=geom();CW=G.pw*635;CH=G.ph*635;BOXR=CW/CH}
+  applyLay();
+  const saveFmt=()=>{ls.set('stripFmt',fmt);ls.set('stripHdr',hdrMode);ls.set('stripLay',lay);applyLay()};
   const runFont=()=>`<w:rFonts w:ascii="${fmt.font}" w:eastAsia="${fmt.font}" w:hAnsi="${fmt.font}" w:cs="${fmt.font}"/>${fmt.bold?'<w:b/><w:bCs/>':''}<w:sz w:val="${fmt.size*2}"/><w:szCs w:val="${fmt.size*2}"/>`;
   // แถบตั้งค่าหัวเรื่อง (ใช้ทั้งแบบง่ายและแบบเต็ม)
   function fmtControls(){
     const chip=(v,t)=>el('span',{class:'sw-chip'+(hdrMode===v?' on':''),onclick:()=>{hdrMode=v;saveFmt();draw()}},t);
     const sel=(list,cur,f,lab)=>el('select',{title:lab,onchange:e=>{f(e.target.value);saveFmt();draw()}},...list.map(x=>el('option',{value:String(x),selected:String(x)===String(cur)},lab==='ขนาด'?x+' pt':x)));
-    return el('div',{class:'ez-fmt'},el('span',{},'หัวเรื่องแสดง:'),chip('all','ทุกหน้า'),chip('first','หน้าแรกหน้าเดียว'),chip('none','ไม่มีหัวเรื่อง'),
+    const laySel=el('select',{title:'รูปต่อหน้า',onchange:e=>{const [c,r]=e.target.value.split('x').map(Number);lay={cols:c,rows:r};saveFmt();draw()}},...LAYS.map(([c,r,t])=>el('option',{value:c+'x'+r,selected:c===lay.cols&&r===lay.rows},t)));
+    return el('div',{class:'ez-fmt'},el('span',{},'รูปต่อหน้า:'),laySel,el('span',{class:'ez-fmt-g'},'หัวเรื่องแสดง:'),chip('all','ทุกหน้า'),chip('first','หน้าแรกหน้าเดียว'),chip('none','ไม่มีหัวเรื่อง'),
       hdrMode==='none'?null:el('span',{class:'ez-fmt-g'},'ฟอนต์',sel(FONTS,fmt.font,v=>fmt.font=v,'ฟอนต์'),'ขนาด',sel(SIZES,fmt.size,v=>fmt.size=+v,'ขนาด'),
         el('span',{class:'sw-chip'+(fmt.bold?' on':''),style:'font-weight:700',onclick:()=>{fmt.bold=!fmt.bold;saveFmt();draw()}},'B ตัวหนา'),
-        el('button',{onclick:pickAndSetLogo},logo?'เปลี่ยนโลโก้':'ใส่โลโก้'),logo?el('button',{onclick:()=>{logo=null;ls.set('stripLogo',null);draw()}},'เอาโลโก้ออก'):null))}
+        el('button',{onclick:logoMenu},logo?'เปลี่ยนโลโก้':'ใส่โลโก้'),logo?el('button',{onclick:()=>{logo=null;ls.set('stripLogo',null);draw()}},'เอาโลโก้ออก'):null))}
   const key=p=>p.key;
   const machineList=()=>machines.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   const groups=()=>{const out=[];photos.forEach((p,i)=>{if(i===0||cuts.has(key(p)))out.push({start:i,key:key(p),items:[]});out.at(-1).items.push(p)});
-    out.forEach((g,i)=>{const [name,model='']=((names[g.key]??machineList()[i]??`เครื่อง ${i+1}`)+'').split('|').map(x=>x.trim());g.name=name;g.model=model;g.use=g.items.filter(p=>!excluded.has(key(p)));g.pages=Math.max(1,Math.ceil(g.use.length/12))});return out};
+    out.forEach((g,i)=>{const [name,model='']=((names[g.key]??machineList()[i]??`เครื่อง ${i+1}`)+'').split('|').map(x=>x.trim());g.name=name;g.model=model;g.use=g.items.filter(p=>!excluded.has(key(p)));g.pages=Math.max(1,Math.ceil(g.use.length/PER()))});return out};
   const saveState=()=>{undoStack.push({cuts:[...cuts],excluded:[...excluded],names:{...names},titles:{...titles},adj:JSON.parse(JSON.stringify(adj)),order:all.map(key)});if(undoStack.length>100)undoStack.shift()};
   function undo(){const s=undoStack.pop();if(!s)return;cuts=new Set(s.cuts);excluded=new Set(s.excluded);names=s.names;titles=s.titles||{};adj=s.adj||{};if(s.order)reorder(s.order);draw()}
   function revoke(){for(const p of all){if(p.url)URL.revokeObjectURL(p.url);if(p.thumb)URL.revokeObjectURL(p.thumb)}all=[];photos=[]}
@@ -1718,7 +1818,7 @@ VIEWS.strip=(()=>{
     main.append(...h('ตรวจรูปของแต่ละเครื่อง','ถ้ารูปไหนอยู่ผิดที่หรือไม่ต้องการ คลิกที่รูปนั้นแล้วเลือกคำสั่งที่ขึ้นมา'),
       el('div',{class:'sw-chips'},...gs.map((x,i)=>el('span',{class:'sw-chip'+(i===curG?' on':''),onclick:()=>{curG=i;sel=null;draw()}},`${x.name} · ${x.use.length}`))));
     main.append(el('div',{class:'sw-row'},'ชื่อเครื่อง:',el('input',{type:'text',value:g.name,onchange:e=>{saveState();names[g.key]=(e.target.value.trim()||g.name)+(g.model?` | ${g.model}`:'');draw()}}),el('button',{onclick:()=>preview(curG)},'ดูหน้ารายงานของเครื่องนี้'),undoBtnEl()));
-    const tl=el('div',{class:'sw-tiles'});g.items.forEach((p,pos)=>{if(pos>0&&pos%12===0)tl.append(el('div',{class:'sw-pg'},`— หน้า ${pos/12+1} เริ่มตรงนี้ —`));
+    const tl=el('div',{class:'sw-tiles'});let u3=0;g.items.forEach((p,pos)=>{if(!excluded.has(key(p))){if(u3>0&&u3%PER()===0)tl.append(el('div',{class:'sw-pg'},`— หน้า ${u3/PER()+1} เริ่มตรงนี้ —`));u3++}
       const t=el('div',{class:'sw-t'+(excluded.has(key(p))?' x':'')+(sel===key(p)?' sel':''),onclick:()=>{sel=sel===key(p)?null:key(p);draw()}},el('img',{src:p.thumb||p.url,loading:'lazy'}),el('span',{class:'no'},String(pos+1)));
       const A=adj[key(p)];if(p.ar>1||A)t.append(el('span',{class:'ls'},(p.ar>1?'แนวนอน':'ปรับแล้ว')+(A&&p.ar>1?' ✓':'')));tl.append(t)});main.append(tl);
     if(sel){const pos=g.items.findIndex(p=>key(p)===sel),p=g.items[pos];if(p){const bt=(t,f,dis)=>el('button',{onclick:f,disabled:!!dis},t),menu=el('div',{class:'sw-menu'},el('b',{},`รูปที่ ${pos+1}:`),
@@ -1785,7 +1885,7 @@ VIEWS.strip=(()=>{
     main.append(el('div',{class:'sw-tools'},el('span',{class:'sw-sub',style:'margin:0'},`ใช้ ${g.use.length} จาก ${g.items.length} รูป · ${g.pages} หน้า`),undoBtnEl(),el('button',{onclick:()=>preview(0)},'👁 ดูตัวอย่างหน้ารายงาน')));
     const tl=el('div',{class:'sw-tiles'});
     let u=0;   // นับเฉพาะรูปที่ใช้ → เส้นคั่นหน้าตรงกับรายงานจริง (รูปที่ไม่ใช้ไม่นับ)
-    g.items.forEach((p,pos)=>{const k=key(p),x=excluded.has(k);if(!x){if(u>0&&u%12===0)tl.append(el('div',{class:'sw-pg'},`— หน้า ${u/12+1} เริ่มตรงนี้ —`));u++}
+    g.items.forEach((p,pos)=>{const k=key(p),x=excluded.has(k);if(!x){if(u>0&&u%PER()===0)tl.append(el('div',{class:'sw-pg'},`— หน้า ${u/PER()+1} เริ่มตรงนี้ —`));u++}
       const t=el('div',{class:'sw-t'+(x?' x':'')+(sel===k?' pick':''),draggable:'true',title:'กดเพื่อเลือกรูปที่จะย้าย',
         onclick:()=>{if(pickPos<0){sel=k;draw()}else if(pickPos===pos){sel=null;draw()}else easyMove(pickPos,pos)},
         ondragstart:e=>{e.dataTransfer.setData('text/plain',String(pos));e.dataTransfer.effectAllowed='move'},
@@ -1816,7 +1916,7 @@ VIEWS.strip=(()=>{
     try{const blob=await busy('กำลังใส่รูปลงไฟล์ Word…',set=>insertInto(pkg,-1,[g],set));const r=await saveBlob(blob,f.name.replace(/\.docx$/i,'')+' (ใส่รูป).docx');if(r)easyDone(r,'ไฟล์เดิมไม่ถูกแก้')}catch(e){console.error(e);toast('ใส่รูปไม่สำเร็จ: '+(e.message||e),1)}}
   function toggleCut(p){if(p.i===0)return;saveState();cuts.has(key(p))?cuts.delete(key(p)):cuts.add(key(p));draw()}
   async function pickLogo(){return pickAndSetLogo()}
-  function preview(gi){const g=groups()[gi];if(!g)return;let pg=0;const modal=el('div',{class:'ov'}),box=el('div',{class:'dlg',style:'max-width:900px'},el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:8px'},el('b',{},g.name),el('span',{class:'note'},`${g.pages} หน้า`),el('button',{onclick:()=>{pg=Math.max(0,pg-1);drawPage()}},'◀'),el('span',{class:'pg'},''),el('button',{onclick:()=>{pg=Math.min(g.pages-1,pg+1);drawPage()}},'▶'),el('button',{style:'margin-left:auto',onclick:()=>modal.remove()},'ปิด')));modal.append(box);document.body.append(modal);const drawPage=()=>{box.querySelector('.pg').textContent=`หน้า ${pg+1}/${g.pages}`;const canvas=el('canvas');canvas.width=794;canvas.height=1123;canvas.style.cssText='display:block;max-height:75vh;max-width:100%;margin:auto';const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);const showHdr=hdrMode==='all'||(hdrMode==='first'&&pg===0);if(showHdr&&logo){const img=new Image();img.onload=()=>{const k=Math.min(189/img.width,50/img.height);c.drawImage(img,45,38,img.width*k,img.height*k)};img.src=URL.createObjectURL(logo.file)}c.fillStyle='#000';c.textAlign='center';c.font=`${fmt.bold?'bold ':''}${Math.round(fmt.size*32/18)}px "${fmt.font}","Angsana New",serif`;if(showHdr)c.fillText(titleOf(g),397,135);const top=showHdr?159:40;const use=g.use.slice(pg*12,pg*12+12);use.forEach((p,i)=>{const x=40+(i%4)*177,y=top+Math.floor(i/4)*307;const im=new Image();im.onload=()=>drawBox(c,im,x,y,172,302,adj[key(p)]||{});im.src=p.url});canvas.style.cursor='pointer';canvas.title='คลิกรูปเพื่อปรับส่วนที่แสดง';canvas.onclick=e=>{const r=canvas.getBoundingClientRect(),k=canvas.width/r.width,col=Math.floor(((e.clientX-r.left)*k-40)/177),row=Math.floor(((e.clientY-r.top)*k-top)/307);if(col<0||col>3||row<0||row>2)return;const p=use[row*4+col];if(p)adjustPhoto(p).then(ok=>{if(ok)drawPage()})};box.querySelector('canvas')?.remove();box.append(canvas)};drawPage()}
+  function preview(gi){const g=groups()[gi];if(!g)return;let pg=0;const modal=el('div',{class:'ov'}),box=el('div',{class:'dlg',style:'max-width:900px'},el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:8px'},el('b',{},g.name),el('span',{class:'note'},`${g.pages} หน้า`),el('button',{onclick:()=>{pg=Math.max(0,pg-1);drawPage()}},'◀'),el('span',{class:'pg'},''),el('button',{onclick:()=>{pg=Math.min(g.pages-1,pg+1);drawPage()}},'▶'),el('button',{style:'margin-left:auto',onclick:()=>modal.remove()},'ปิด')));modal.append(box);document.body.append(modal);const drawPage=()=>{box.querySelector('.pg').textContent=`หน้า ${pg+1}/${g.pages}`;const canvas=el('canvas');canvas.width=794;canvas.height=1123;canvas.style.cssText='display:block;max-height:75vh;max-width:100%;margin:auto';const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);const showHdr=hdrMode==='all'||(hdrMode==='first'&&pg===0);if(showHdr&&logo){const img=new Image();img.onload=()=>{const k=Math.min(189/img.width,50/img.height);c.drawImage(img,45,38,img.width*k,img.height*k)};img.src=URL.createObjectURL(logo.file)}c.fillStyle='#000';c.textAlign='center';c.font=`${fmt.bold?'bold ':''}${Math.round(fmt.size*32/18)}px "${fmt.font}","Angsana New",serif`;if(showHdr)c.fillText(titleOf(g),397,135);applyLay();const top=showHdr?159:40,G=geom(),NC=lay.cols,cp=G.cellW/15,rp=G.rowH/15,pw=G.pw/15,ph=G.ph/15,P=PER();const use=g.use.slice(pg*P,pg*P+P);use.forEach((p,i)=>{const x=45+(i%NC)*cp+(cp-pw)/2,y=top+Math.floor(i/NC)*rp+(rp-ph)/2;const im=new Image();im.onload=()=>drawBox(c,im,x,y,pw,ph,adj[key(p)]||{});im.src=p.url});canvas.style.cursor='pointer';canvas.title='คลิกรูปเพื่อปรับส่วนที่แสดง';canvas.onclick=e=>{const r=canvas.getBoundingClientRect(),k=canvas.width/r.width,col=Math.floor(((e.clientX-r.left)*k-45)/cp),row=Math.floor(((e.clientY-r.top)*k-top)/rp);if(col<0||col>=NC||row<0||row>=lay.rows)return;const p=use[row*NC+col];if(p)adjustPhoto(p).then(ok=>{if(ok)drawPage()})};box.querySelector('canvas')?.remove();box.append(canvas)};drawPage()}
   const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   // ตัดตามกรอบ: a.fx/a.fy (0..1, ค่าเริ่มต้น .5 = กึ่งกลาง) บอกว่าจะเก็บส่วนไหนของรูปไว้
   function cropOf(w,h,a={}){const I=w/h,fx=a.fx??.5,fy=a.fy??.5;if(I>BOXR){const c=1-BOXR/I;return `<a:srcRect l="${Math.round(c*fx*100000)}" r="${Math.round(c*(1-fx)*100000)}"/>`}if(I<BOXR){const c=1-I/BOXR;return `<a:srcRect t="${Math.round(c*fy*100000)}" b="${Math.round(c*(1-fy)*100000)}"/>`}return ''}
@@ -1843,12 +1943,12 @@ VIEWS.strip=(()=>{
   const pic=(id,rid,crop,line,cx=CW,cy=CH)=>`<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Picture ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="image${id}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/>${crop}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${line}</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
   async function prepPhoto(f){const a=await createImageBitmap(f);let raw=null;try{raw=await createImageBitmap(f,{imageOrientation:'none'})}catch(e){}const ext=(f.name.match(/\.(\w+)$/)||[])[1]?.toLowerCase(),valid=/^(jpe?g|png)$/.test(ext)&&(!raw||raw.width===a.width&&raw.height===a.height),big=Math.max(a.width,a.height)>1400;if(valid&&!big){const r={bytes:new Uint8Array(await f.arrayBuffer()),ext:ext==='png'?'png':'jpg',w:a.width,h:a.height};a.close?.();raw?.close?.();return r}const k=big?1280/Math.max(a.width,a.height):1,c=el('canvas');c.width=Math.max(1,Math.round(a.width*k));c.height=Math.max(1,Math.round(a.height*k));c.getContext('2d').drawImage(a,0,0,c.width,c.height);a.close?.();raw?.close?.();return {bytes:new Uint8Array(await (await new Promise(r=>c.toBlob(r,'image/jpeg',.85))).arrayBuffer()),ext:'jpg',w:c.width,h:c.height}}
   const picLine='<a:ln w="9525"><a:solidFill><a:srgbClr val="555555"/></a:solidFill></a:ln>';
-  async function tableXml(g,add,id0){const use=g.use;let id=id0;
+  async function tableXml(g,add,id0){applyLay();const G=geom(),NC=lay.cols,lastW=TBLW-G.cellW*(NC-1);const use=g.use;let id=id0;
     const logoRun=logo&&hdrMode!=='none'?pic(id++,add(logo.bytes,logo.ext),'','',1800000,Math.round(1800000*logo.height/logo.width)):'';
-    const head=hdrMode==='none'?'':`<w:tr><w:trPr><w:cantSplit/>${hdrMode==='all'?'<w:tblHeader/>':''}<w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10545" w:type="dxa"/><w:gridSpan w:val="4"/><w:tcMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="170" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:pPr><w:spacing w:after="227"/>${TINY}</w:pPr>${logoRun}</w:p><w:p><w:pPr><w:spacing w:after="0" w:line="${Math.round(fmt.size*27)}" w:lineRule="exact"/><w:jc w:val="center"/>${TINY}</w:pPr><w:r><w:rPr>${runFont()}</w:rPr><w:t xml:space="preserve">${esc(titleOf(g))}</w:t></w:r></w:p></w:tc></w:tr>`;
+    const head=hdrMode==='none'?'':`<w:tr><w:trPr><w:cantSplit/>${hdrMode==='all'?'<w:tblHeader/>':''}<w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10545" w:type="dxa"/><w:gridSpan w:val="${NC}"/><w:tcMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="170" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:pPr><w:spacing w:after="227"/>${TINY}</w:pPr>${logoRun}</w:p><w:p><w:pPr><w:spacing w:after="0" w:line="${Math.round(fmt.size*27)}" w:lineRule="exact"/><w:jc w:val="center"/>${TINY}</w:pPr><w:r><w:rPr>${runFont()}</w:rPr><w:t xml:space="preserve">${esc(titleOf(g))}</w:t></w:r></w:p></w:tc></w:tr>`;
     const prepared=new Array(use.length);let next=0;await Promise.all(Array.from({length:8},async()=>{for(;;){const i=next++;if(i>=use.length)return;prepared[i]=await prepPhoto(use[i].f)}}));let rows='';
-    for(let r=0;r<use.length;r+=4){let cells='';for(let c=0;c<4;c++){const p=use[r+c];let inner='';let va='';if(p){const q=prepared[r+c],a=adj[key(p)]||{};if(a.fit){const I=q.w/q.h;let cx=CW,cy=Math.round(CW/I);if(cy>CH){cy=CH;cx=Math.round(CH*I)}inner=pic(id++,add(q.bytes,q.ext),'',picLine,cx,cy);va='<w:vAlign w:val="center"/>'}else inner=pic(id++,add(q.bytes,q.ext),cropOf(q.w,q.h,a),picLine)}cells+=`<w:tc><w:tcPr><w:tcW w:w="${c===3?2637:2636}" w:type="dxa"/>${va}</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/><w:jc w:val="center"/>${TINY}</w:pPr>${inner}</w:p></w:tc>`}rows+=`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:hRule="exact" w:val="4637"/><w:jc w:val="center"/></w:trPr>${cells}</w:tr>`}
-    return {xml:`<w:tbl><w:tblPr><w:tblW w:w="10545" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="28" w:type="dxa"/><w:left w:w="28" w:type="dxa"/><w:right w:w="28" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="2636"/><w:gridCol w:w="2636"/><w:gridCol w:w="2636"/><w:gridCol w:w="2637"/></w:tblGrid>${head}${rows}</w:tbl>`,next:id}}
+    for(let r=0;r<use.length;r+=NC){let cells='';for(let c=0;c<NC;c++){const p=use[r+c];let inner='';let va='';if(p){const q=prepared[r+c],a=adj[key(p)]||{};if(a.fit){const I=q.w/q.h;let cx=CW,cy=Math.round(CW/I);if(cy>CH){cy=CH;cx=Math.round(CH*I)}inner=pic(id++,add(q.bytes,q.ext),'',picLine,cx,cy);va='<w:vAlign w:val="center"/>'}else inner=pic(id++,add(q.bytes,q.ext),cropOf(q.w,q.h,a),picLine)}cells+=`<w:tc><w:tcPr><w:tcW w:w="${c===NC-1?lastW:G.cellW}" w:type="dxa"/>${va}</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/><w:jc w:val="center"/>${TINY}</w:pPr>${inner}</w:p></w:tc>`}rows+=`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:hRule="exact" w:val="${G.rowH}"/><w:jc w:val="center"/></w:trPr>${cells}</w:tr>`}
+    return {xml:`<w:tbl><w:tblPr><w:tblW w:w="10545" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="28" w:type="dxa"/><w:left w:w="28" w:type="dxa"/><w:right w:w="28" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${Array.from({length:NC},(_,c)=>`<w:gridCol w:w="${c===NC-1?lastW:G.cellW}"/>`).join('')}</w:tblGrid>${head}${rows}</w:tbl>`,next:id}}
   async function docxOf(g){const media=[],rels=['<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'];
     const add=(bytes,ext)=>{const n=media.length+1,rid='rId'+(n+1);media.push({name:`media/img${n}.${ext}`,bytes,ext});rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/img${n}.${ext}"/>`);return rid};
     const T=await tableXml(g,add,1);
@@ -1863,8 +1963,22 @@ VIEWS.strip=(()=>{
     try{const out=await busy('กำลังสร้าง Word…',async set=>buildAll(set));let where='';if(dir){for(const o of out){const fh=await dir.getFileHandle(o.name,{create:true}),w=await fh.createWritable();await w.write(o.blob);await w.close()}where=`บันทึกในโฟลเดอร์ที่คุณเลือก: ${dir.name}`}else{const entries=new Map();for(const o of out)entries.set(o.name,new Uint8Array(await o.blob.arrayBuffer()));download('รายงานรายเครื่อง.zip',await zip(entries,'application/zip'));where='ได้ไฟล์ ZIP ชื่อ รายงานรายเครื่อง.zip ในโฟลเดอร์ Downloads ของเครื่อง (แตกไฟล์ก่อนเปิดใน Word)'}
       result={files:out.map(o=>({name:o.name,n:o.n})),where};step=5;sel=null;draw()}
     catch(e){console.error(e);toast('ส่งออกไม่สำเร็จ: '+(e.message||e),1)}}
-  async function pickAndSetLogo(){const [f]=await pickFiles('image/png,image/jpeg');if(!f)return;try{const b=await createImageBitmap(f);logo={file:f,width:b.width,height:b.height,bytes:new Uint8Array(await f.arrayBuffer()),ext:/png/i.test(f.type)?'png':'jpg'};b.close?.();
-    if(logo.bytes.length<=1500000&&!ls.set('stripLogo',{b64:u8b64(logo.bytes),ext:logo.ext,w:logo.width,h:logo.height}))toast('ใส่โลโก้แล้ว (แต่จำไว้ในเครื่องไม่ได้ ไฟล์ใหญ่เกิน)');draw()}catch(e){toast('เปิดโลโก้ไม่ได้',1)}}
+  async function setLogoFile(f){try{const b=await createImageBitmap(f);logo={file:f,width:b.width,height:b.height,bytes:new Uint8Array(await f.arrayBuffer()),ext:/png/i.test(f.type)||/\.png$/i.test(f.name)?'png':'jpg'};b.close?.();
+    if(logo.bytes.length>1500000||!ls.set('stripLogo',{b64:u8b64(logo.bytes),ext:logo.ext,w:logo.width,h:logo.height}))toast('ใส่โลโก้แล้ว (แต่จำไว้ในเครื่องไม่ได้ ไฟล์ใหญ่เกิน)');draw();return true}catch(e){toast('เปิดโลโก้ไม่ได้',1);return false}}
+  async function pickAndSetLogo(){const [f]=await pickFiles('image/png,image/jpeg');if(f)await setLogoFile(f)}
+  async function logoMenu(){const v=await dialog('ใส่โลโก้',el('p',{},'เอาโลโก้มาจากไหน?'),[['📄 ดึงจากไฟล์ Word ที่มีโลโก้',2],['🖼 เลือกไฟล์รูป',1],['ยกเลิก',0]]);if(v===1)pickAndSetLogo();else if(v===2)logoFromWord()}
+  // ดึงรูปจากไฟล์ Word (รูปในหัวกระดาษขึ้นก่อน เพราะโลโก้มักอยู่ตรงนั้น) แล้วให้กดเลือก
+  async function logoFromWord(){const [f]=await pickFiles('.docx');if(!f)return;let pkg;try{pkg=await readDocx(f)}catch(e){toast(e.message||'เปิดไฟล์ Word ไม่ได้',1);return}
+    const hdr=new Set();for(const [k,v] of pkg){const m=k.match(/^(.*\/)_rels\/(header|footer)\d*\.xml\.rels$/);if(!m)continue;const s=new TextDecoder().decode(v);for(const t of s.matchAll(/Target="([^"]+\.(?:png|jpe?g))"/gi))hdr.add((m[1]+t[1]).replace(/[^/]+\/\.\.\//g,''))}
+    const imgs=[...pkg.keys()].filter(k=>/\/media\/[^/]+\.(png|jpe?g)$/i.test(k)).sort((a,b)=>hdr.has(b)-hdr.has(a)),skipped=[...pkg.keys()].filter(k=>/\/media\/[^/]+\.(emf|wmf|gif|bmp|tiff?)$/i.test(k)).length;
+    if(!imgs.length){toast(`ไม่พบรูปที่ใช้ได้ในไฟล์ “${f.name}”`+(skipped?` (มีรูปแบบ EMF/WMF ${skipped} รูป ใช้ไม่ได้ — ให้บันทึกโลโก้เป็นไฟล์รูปก่อน)`:''),1);return}
+    const urls=[],ov=el('div',{class:'ov'}),grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:55vh;overflow:auto;margin:10px 0'});
+    const close=()=>{ov.remove();urls.forEach(u=>URL.revokeObjectURL(u))};
+    imgs.slice(0,40).forEach(k=>{const name=k.split('/').pop(),blob=new Blob([pkg.get(k)],{type:/png$/i.test(k)?'image/png':'image/jpeg'}),u=URL.createObjectURL(blob);urls.push(u);
+      grid.append(el('button',{style:'display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:2px solid var(--line);border-radius:10px;background:#fff;cursor:pointer',onclick:async()=>{const ok=await setLogoFile(new File([blob],name,{type:blob.type}));close();if(ok)toast('ใส่โลโก้แล้ว')}},
+        el('img',{src:u,style:'max-width:100%;max-height:90px;object-fit:contain'}),el('span',{style:'font-size:12px;color:var(--muted)'},hdr.has(k)?'⭐ อยู่ในหัวกระดาษ':'รูปในเนื้อหา')))});
+    ov.append(el('div',{class:'dlg',style:'max-width:760px;width:92vw'},el('h2',{},'กดเลือกรูปที่เป็นโลโก้'),el('p',{class:'note'},`จากไฟล์ ${f.name} · ${imgs.length} รูป`+(skipped?` · ข้าม ${skipped} รูปแบบที่ใช้ไม่ได้ (EMF/WMF)`:'')),grid,el('div',{class:'acts'},el('button',{onclick:close},'ยกเลิก'))));
+    ov.addEventListener('click',e=>{if(e.target===ov)close()});document.body.append(ov)}
   /* ---------- แทรกรูปลงไฟล์ Word ที่มีอยู่ (ตรงกลางหรือท้ายไฟล์) ---------- */
   const NS_DOC2=`xmlns:w="${NS.w}" xmlns:r="${NS.r}" xmlns:wp="${NS.wp}"`;
   const SEC_TINY='<w:spacing w:after="0" w:line="20" w:lineRule="exact"/>'+TINY;
@@ -1929,8 +2043,8 @@ VIEWS.strip=(()=>{
       if(!done){download(name,blob);toast(`ได้ไฟล์ ${name} ในโฟลเดอร์ Downloads · ไฟล์เดิมไม่ถูกแก้ · เปิดตรวจใน Word`)}close()}catch(e){console.error(e);toast('แทรกรูปไม่สำเร็จ: '+(e.message||e),1)}}
     if(pkg&&gs.length===1){scr=2;s2()}else s1();
   }
-  function saveCuts(){const data={type:'strip-cuts',list:machineList(),cuts:[...cuts],excluded:[...excluded],names,titles,hdrMode,template,adj,order:all.map(key),folders:[...hidden]};download('การแบ่งเครื่อง.json',new Blob([JSON.stringify(data)],{type:'application/json'}))}
-  async function openCuts(){const [f]=await pickFiles('.json,application/json');if(!f)return;try{const d=JSON.parse(await f.text());if(d.type!=='strip-cuts')throw Error('ชนิดไฟล์ไม่ถูกต้อง');if(!all.length){toast('เลือกโฟลเดอร์รูปก่อน แล้วค่อยเปิดงานที่บันทึกไว้',1);return}saveState();cuts=new Set(d.cuts||[]);excluded=new Set(d.excluded||[]);names=d.names||{};titles=d.titles||{};adj=d.adj||{};if(d.hdrMode)hdrMode=d.hdrMode;if(d.template)template=d.template;machines=(d.list||[]).join('\n');hidden=new Set(d.folders||[]);if(d.order)reorder(d.order);photos=all.filter(p=>!hidden.has(p.folder));photos.forEach((p,i)=>p.i=i);step=photos.length?3:0;sel=null;draw()}catch(e){toast('เปิดไฟล์แบ่งเครื่องไม่ได้: '+(e.message||e),1)}}
+  function saveCuts(){const data={type:'strip-cuts',list:machineList(),cuts:[...cuts],excluded:[...excluded],names,titles,hdrMode,lay,fmt,template,adj,order:all.map(key),folders:[...hidden]};download('การแบ่งเครื่อง.json',new Blob([JSON.stringify(data)],{type:'application/json'}))}
+  async function openCuts(){const [f]=await pickFiles('.json,application/json');if(!f)return;try{const d=JSON.parse(await f.text());if(d.type!=='strip-cuts')throw Error('ชนิดไฟล์ไม่ถูกต้อง');if(!all.length){toast('เลือกโฟลเดอร์รูปก่อน แล้วค่อยเปิดงานที่บันทึกไว้',1);return}saveState();cuts=new Set(d.cuts||[]);excluded=new Set(d.excluded||[]);names=d.names||{};titles=d.titles||{};adj=d.adj||{};if(d.hdrMode)hdrMode=d.hdrMode;if(d.lay&&d.lay.cols)lay=d.lay;if(d.fmt)fmt=Object.assign(fmt,d.fmt);applyLay();if(d.template)template=d.template;machines=(d.list||[]).join('\n');hidden=new Set(d.folders||[]);if(d.order)reorder(d.order);photos=all.filter(p=>!hidden.has(p.folder));photos.forEach((p,i)=>p.i=i);step=photos.length?3:0;sel=null;draw()}catch(e){toast('เปิดไฟล์แบ่งเครื่องไม่ได้: '+(e.message||e),1)}}
   function setFiles(files){return load(files)}
   const _dbg={load:setFiles,state:()=>({all:all.length,photos:photos.length,files:photos.map(p=>({key:p.key,folder:p.folder,name:p.f.name,lastModified:p.f.lastModified})),groups:groups().map(g=>({start:g.start,name:g.name,model:g.model,n:g.use.length,pages:g.pages})),hidden:[...hidden]}),setMachines,setTemplate:v=>{template=v;draw()},toggleCut:i=>{if(photos[i])toggleCut(photos[i])},toggleExclude:i=>{if(photos[i]){saveState();excluded.has(key(photos[i]))?excluded.delete(key(photos[i])):excluded.add(key(photos[i]));draw()}},setHidden:a=>{hidden=new Set(a);applyFilter()},setAdj:(i,a)=>{if(photos[i]){adj[key(photos[i])]=a;draw()}},adjState:()=>adj,setLogoBlob:async blob=>{const f=new File([blob],'logo.png',{type:'image/png'});const b=await createImageBitmap(f);logo={file:f,width:b.width,height:b.height,bytes:new Uint8Array(await f.arrayBuffer()),ext:'png'};b.close?.()},buildAll,docxOf,draw,leave,go,insertInto:(pkg,idx,gi)=>{const gs=groups().filter(g=>g.use.length);return insertInto(pkg,idx,(gi||gs.map((_,i)=>i)).map(i=>gs[i]),()=>{})},bodyItems,setHdr:v=>{hdrMode=v;draw()},titlesState:()=>titles,order:()=>all.map(p=>p.key),moveInGroup,moveToGroup,exportReports};
   Object.assign(_dbg,{easyLoad:async(files,name)=>{jobDir=null;jobName=cleanJob(name);await load(files);easyTitle=jobName;step=1;sel=null;draw()},easyMove,easyState:()=>({easy,step,title:easyTitle,job:jobName,sel}),setEasyTitle:v=>{easyTitle=v},easyDocx:()=>docxOf(groups()[0]),appendEasyBlob:pkg=>insertInto(pkg,-1,[groups()[0]],()=>{})});
@@ -1938,6 +2052,7 @@ VIEWS.strip=(()=>{
   return {title:'แถบรูปแบ่งเครื่อง',enter:app=>enter(app,false),leave,dirty:()=>false,_dbg,easyView};
 })();
 VIEWS.easy=VIEWS.strip.easyView;
+
 
 boot();
 </script>
