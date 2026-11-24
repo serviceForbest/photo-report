@@ -397,6 +397,7 @@ async function renderHome(app){
   const wrap=el('div',{class:'homewrap'},
     el('h1',{},'วันนี้จะทำอะไร'),
     el('div',{class:'cards'},
+      card('🖼️','ทำรายงานรูป (แบบง่าย)','เลือกโฟลเดอร์งาน 1 งาน ตัด/สลับรูป พิมพ์หัวเรื่อง แล้วบันทึกเป็น Word หรือใส่ต่อท้ายรายงานเดิม','easy'),
       card('📚','ทำเล่มรายงาน','รวมไฟล์ PDF และไฟล์สแกน ใส่เลขหน้า ทำสารบัญ ได้ PDF เล่มเดียว','book',true),
       card('📷','ทำหน้ารูปภาพ','จัดรูปถ่ายลงหน้า A4 มีหัวเรื่องและคำบรรยาย ส่งเข้าเล่ม หรือบันทึกเป็น PDF / Word','photo'),
       card('🧾','แถบรูปแบ่งเครื่อง','เลือกรูปงานเป็นชุด คลิกแบ่งเครื่อง ใส่ชื่อจากรายชื่อ แล้วส่งออก Word รายเครื่อง','strip'),
@@ -485,7 +486,10 @@ async function boot(){
       else if(fs.every(f=>/^(jpe?g|png|webp|heic|bmp|gif)$/.test(ext(f)))){go('photo');VIEWS.photo.onDrop(fs)}
       else {go('book');VIEWS.book.onDrop(fs)}}});
   window.addEventListener('beforeunload',e=>{if(current&&VIEWS[current].dirty&&VIEWS[current].dirty()){e.preventDefault();e.returnValue=''}});
-  go(null);
+  // ลิงก์ตรง: ...#easy = ทำรายงานรูปแบบง่าย · #strip = แถบรูปแบ่งเครื่อง (ลิงก์จากบอทไลน์ใช้ #easy)
+  const start=(location.hash||'').replace('#','');
+  go(VIEWS[start]&&['easy','strip','book','photo','word','pdf'].includes(start)?start:null);
+  if(start==='easy')return;   // แบบง่ายไม่ขึ้นหน้าต่างตั้งค่า/ประกาศรุ่น (คนใช้มือใหม่)
   if(ls.get('setupSeen',null)==null)await setupDialog(true);else await versionNotice();
 }
 
@@ -1627,16 +1631,20 @@ VIEWS.strip=(()=>{
   }
   function applyFilter(){photos=all.filter(p=>!hidden.has(p.folder));photos.forEach((p,i)=>p.i=i);draw()}
   function autoTitle(g){let t=template.trim();if(!g.model)t=t.replace(/\s*รุ่น\s*\{รุ่น\}/,'');return t.replaceAll('{รุ่น}',g.model).replaceAll('{ชื่อ}',g.name)}
-  function titleOf(g){return titles[g.key]!==undefined?titles[g.key]:autoTitle(g)}
+  function titleOf(g){if(easy)return easyTitle;return titles[g.key]!==undefined?titles[g.key]:autoTitle(g)}
   const STEPS=['เลือกรูป','รายชื่อเครื่อง','แบ่งเครื่อง','ตรวจรูป','ตรวจก่อนสร้าง','เสร็จแล้ว'];
+  const ESTEPS=['เลือกงาน','จัดรูปและบันทึก'];
+  // แบบง่าย (1 โฟลเดอร์ = 1 งาน = 1 เครื่อง): เลือกโฟลเดอร์งาน → จัดรูป + หัวเรื่อง + บันทึก ในหน้าเดียว
+  let easy=false,easyTitle='',jobName='',jobDir=null,lastDrawn='';
   const CSS=`.sw{flex:1;min-width:0;margin:14px 18px 14px;align-self:stretch;width:calc(100% - 36px);max-width:1100px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;min-height:0}.sw-top{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f3f4f6;border-bottom:1px solid var(--line)}.sw-top b{font-size:16px}.sw-step{color:var(--muted);font-size:14px}.sw-prog{display:flex;gap:4px;margin-left:auto}.sw-prog i{width:26px;height:6px;border-radius:3px;background:#d1d5db}.sw-prog i.on{background:var(--accent,#2563eb)}.sw-status{font-size:12px;color:var(--muted);min-width:120px;text-align:right}.sw-body{padding:18px;flex:1;min-height:0;overflow:auto}.sw-top,.sw-foot{flex:none}.sw-body h3{font-size:21px;margin:0 0 4px}.sw-sub{color:var(--muted);font-size:14px;margin:0 0 14px}.sw-foot{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);background:#fafafa}.sw-foot .hintx{font-size:13px;color:var(--muted);text-align:center;flex:1}.sw button,.sw .big{width:auto!important;display:inline-block;flex:none!important}.sw-foot button{font-size:16px;padding:11px 22px;min-width:130px}.sw-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:15px;display:flex;gap:10px;align-items:flex-start}.sw-card.ok{background:#f0fdf4;border-color:#bbf7d0}.sw-card.wn{background:#fffbeb;border-color:#fde68a}.sw-card.inf{background:#eff6ff;border-color:#bfdbfe}.sw-guide{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:10px;padding:12px 14px;font-size:16px;margin-bottom:12px}.sw-guide small{display:block;font-size:12px;opacity:.8;margin-top:3px}.sw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.sw-chip{padding:6px 12px;border-radius:16px;border:1px solid #cbd5e1;font-size:14px;cursor:pointer;background:#fff}.sw-chip.on{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:#fff}.sw-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px}.sw-t{position:relative;aspect-ratio:3/4;background:#e5e7eb;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid transparent}.sw-t img{width:100%;height:100%;object-fit:cover;display:block}.sw-t:hover{border-color:var(--accent,#2563eb)}.sw-t.start{border-color:#16a34a}.sw-t.sel{border-color:#e11d48}.sw-t.x img{opacity:.2}.sw-t .no{position:absolute;left:3px;bottom:3px;color:#fff;background:#0009;font-size:11px;padding:0 4px;border-radius:4px}.sw-t .tag{position:absolute;left:3px;top:3px;color:#fff;background:#16813a;font-size:10px;padding:0 4px;border-radius:4px}.sw-t .ls{position:absolute;right:3px;top:3px;color:#7c2d12;background:#ffedd5;font-size:10px;padding:0 4px;border-radius:4px}.sw-pg{grid-column:1/-1;border-top:1px dashed #94a3b8;font-size:11px;color:var(--muted);padding-top:2px}.sw-menu{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px;margin:10px 0;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff}.sw-menu button,.sw-menu select{font-size:14px;padding:8px 12px}.sw-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}.sw-row input[type=text]{flex:1;font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px}.sw-body textarea{width:100%;font:inherit;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:8px}.sw-job{display:block;font-size:14px;margin:5px 0}.sw-sec{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:12px 0}.sw-sec h4{margin:0 0 6px;font-size:15px}.sw-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}`;
   let step=0,sel=null,curG=0,result=null,stepName,prog,backBtn,nextBtn,hintEl,skipped=0,nextFn=null;
   const h=(t,s)=>[el('h3',{},t),el('p',{class:'sw-sub'},s)];
   const nm=s=>(s||'').split('|')[0].trim();
   function setNext(label,enabled,hint,fn){nextBtn.textContent=label;nextBtn.disabled=!enabled;hintEl.textContent=hint||'รูปต้นฉบับไม่ถูกแก้ไข';nextFn=fn}
   function go(n){step=n;sel=null;draw()}
-  function enter(app){
-    if(!$('#stripStyle2'))document.head.append(el('style',{id:'stripStyle2'},CSS));
+  function enter(app,isEasy){
+    easy=!!isEasy;step=0;sel=null;lastDrawn='';
+    if(!$('#stripStyle2'))document.head.append(el('style',{id:'stripStyle2'},CSS+ECSS));
     root=el('div',{class:'sw'});app.append(root);
     stepName=el('span',{class:'sw-step'});prog=el('span',{class:'sw-prog'});status=el('span',{class:'sw-status'},'');
     main=el('div',{class:'sw-body'});
@@ -1647,8 +1655,10 @@ VIEWS.strip=(()=>{
   async function pickAndLoad(){const fs=await pickFolder('image/*,video/*');if(fs.length)await load(fs)}
   function setMachines(v){machines=v;draw()}
   function undoBtnEl(){return el('button',{onclick:undo},'↶ เลิกทำล่าสุด')}
-  function draw(){if(!root||!main)return;stepName.textContent=`ขั้น ${step+1} จาก 6 · ${STEPS[step]}`;prog.innerHTML='';STEPS.forEach((_,i)=>prog.append(el('i',{class:i<=step?'on':''})));
-    main.innerHTML='';backBtn.style.visibility=(step===0||step===5)?'hidden':'visible';nextBtn.style.display=step===5?'none':'';[s0,s1,s2,s3,s4,s5][step]()}
+  function draw(){if(!root||!main)return;const SS=easy?ESTEPS:STEPS,here=(easy?'e':'s')+step,keep=here===lastDrawn?main.scrollTop:0;lastDrawn=here;
+    stepName.textContent=`ขั้น ${step+1} จาก ${SS.length} · ${SS[step]}`;prog.innerHTML='';SS.forEach((_,i)=>prog.append(el('i',{class:i<=step?'on':''})));
+    main.innerHTML='';backBtn.style.visibility=(step===0||(!easy&&step===5))?'hidden':'visible';backBtn.textContent=easy?'← เลือกงานอื่น':'← ขั้นก่อนหน้า';nextBtn.style.display=(!easy&&step===5)?'none':'';
+    (easy?[e0,e1]:[s0,s1,s2,s3,s4,s5])[step]();main.scrollTop=keep}   // คงตำแหน่งเลื่อนไว้เมื่อวาดหน้าเดิมซ้ำ (เช่น หลังย้ายรูป)
   /* ขั้น 1: เลือกรูป */
   function s0(){
     main.append(...h('เลือกโฟลเดอร์ที่มีรูปงาน','เลือกโฟลเดอร์ที่ช่างส่งรูปมา (เช่นโฟลเดอร์ของเดือนหรือของวันที่ระบบเก็บรูปไว้) เครื่องมืออ่านรูปทั้งหมดในโฟลเดอร์นั้นและโฟลเดอร์ย่อย'),
@@ -1730,6 +1740,67 @@ VIEWS.strip=(()=>{
       el('p',{class:'sw-sub'},'ตรวจไฟล์ใน Word อีกครั้ง แก้ข้อความได้ตามต้องการ (เบราว์เซอร์เปิดโฟลเดอร์หรือไฟล์ให้เองไม่ได้ ให้เปิดจาก Windows)'),
       el('div',{class:'sw-tools'},el('button',{class:'big',onclick:()=>go(4)},'← กลับไปแก้ไข'),el('button',{class:'big',onclick:()=>{result=null;go(0)}},'เริ่มงานใหม่')));
   }
+  /* ================= แบบง่าย ================= */
+  const ECSS=`.ez-pick{text-align:center;border:2px dashed #93c5fd;background:#f8fbff;border-radius:14px;padding:26px 16px;margin:8px 0 14px}.ez-pick .big{font-size:20px;padding:14px 30px}.ez-how{font-size:15px;line-height:1.8;margin:12px auto 0;max-width:620px;text-align:left}.ez-how li{margin:2px 0}.ez-title{display:flex;gap:10px;align-items:center;margin-bottom:10px}.ez-title b{font-size:16px;white-space:nowrap}.ez-title input{flex:1;font:inherit;font-size:18px;padding:9px 12px;border:2px solid #93c5fd;border-radius:8px}.ez-help{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:#334155;background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:10px}.sw .sw-t .xb{position:absolute;right:4px;top:4px;width:30px!important;height:30px;min-width:0;border-radius:50%;border:1px solid #d1d5db;background:#fff;color:#dc2626;font-size:16px;font-weight:700;padding:0!important;display:flex!important;align-items:center;justify-content:center;cursor:pointer;z-index:2;box-shadow:0 1px 3px #0003}.sw .sw-t.x .xb{color:#16a34a;font-size:13px;width:auto!important;padding:0 10px!important;border-radius:15px}.sw .sw-t .ez-ls{padding:2px 6px!important;min-width:0}.sw-t .ez-ls{position:absolute;left:4px;top:4px;border:1px solid #fdba74;background:#ffedd5;color:#7c2d12;font-size:11px;padding:2px 6px;border-radius:6px;cursor:pointer;z-index:2}.sw-t.pick{border-color:#2563eb;box-shadow:0 0 0 3px #93c5fd}.sw-t.drop{border-color:#2563eb;border-style:dashed}.sw-t .xl{position:absolute;inset:auto 0 26px 0;text-align:center;font-size:13px;font-weight:600;color:#b91c1c}.ez-bar{position:sticky;top:-18px;z-index:3;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:15px;display:flex;gap:10px;align-items:center}.ez-done{text-align:center}.ez-done .ok{font-size:46px;color:#16a34a;line-height:1}.ez-done .fn{font-size:18px;font-weight:600;margin:8px 0;word-break:break-all}`;
+  const cleanJob=s=>String(s||'').replace(/[_]+/g,' ').replace(/\s+/g,' ').trim();
+  async function filesFromDir(dh,prefix,out){for await(const [name,h] of dh.entries()){if(name.startsWith('.'))continue;if(h.kind==='directory')await filesFromDir(h,prefix+name+'/',out);else{const f=await h.getFile();if(!isImage(f))continue;Object.defineProperty(f,'webkitRelativePath',{value:prefix+name});out.push(f)}}return out}
+  async function pickEasy(){
+    let files=[],dir=null,name='';
+    if(window.showDirectoryPicker){try{dir=await window.showDirectoryPicker({id:'ezjob',mode:'read'})}catch(e){if(e.name==='AbortError')return;dir=null}}
+    if(dir){name=dir.name;files=await busy('กำลังอ่านรูปในโฟลเดอร์…',()=>filesFromDir(dir,dir.name+'/',[]))}
+    else{files=await pickFolder('image/*');if(!files.length)return;name=(files[0].webkitRelativePath||'').split('/')[0]||'งาน'}
+    if(!files.some(isImage)){toast(`ไม่พบรูปในโฟลเดอร์ “${name}” — ตรวจว่าเลือกโฟลเดอร์งานถูกอัน`,1);return}
+    jobDir=dir;jobName=cleanJob(name);await load(files);easyTitle=jobName;step=1;sel=null;draw()}
+  function e0(){
+    main.append(...h('เลือกโฟลเดอร์งาน','เลือกโฟลเดอร์ของงานที่จะทำรายงาน 1 งาน (คนที่เตรียมรูปจะบอกว่าโฟลเดอร์อยู่ที่ไหน)'),
+      el('div',{class:'ez-pick'},el('button',{class:'pri big',onclick:pickEasy},'📂 เลือกโฟลเดอร์งาน'),
+        el('ol',{class:'ez-how'},el('li',{},'หน้าต่างเลือกโฟลเดอร์จะเปิดขึ้น → ไปที่โฟลเดอร์ที่บอกไว้'),el('li',{},'คลิกที่ชื่อโฟลเดอร์งาน ',el('b',{},'1 ครั้ง'),' (ไม่ต้องเปิดเข้าไปข้างใน)'),
+          el('li',{},'กดปุ่ม ',el('b',{},'Select Folder'),' หรือ ',el('b',{},'เลือกโฟลเดอร์'),' (ถ้าเป็นปุ่ม ',el('b',{},'Upload'),' ก็กดได้)'),
+          el('li',{},'ถ้ามีหน้าต่างถามต่อ ให้กด ',el('b',{},'View files / ดูไฟล์'),' หรือ ',el('b',{},'Upload'),' — ',el('u',{},'รูปไม่ได้ถูกส่งขึ้นอินเทอร์เน็ต'),' เครื่องมืออ่านรูปในเครื่องนี้เท่านั้น'))),
+      el('p',{class:'sw-sub'},'งานที่มีหลายเครื่องในโฟลเดอร์เดียว ใช้ ',el('a',{href:'#strip',onclick:e=>{e.preventDefault();window.go('strip')}},'แบบเต็ม (แบ่งเครื่อง)')));
+    setNext('ถัดไป →',photos.length>0,photos.length?'':'เลือกโฟลเดอร์งานก่อน',()=>go(1));
+  }
+  function easyMove(from,to){if(from===to||from<0||to<0)return;moveInGroup(0,from,to);sel=null;draw()}
+  function e1(){
+    const g=groups()[0];if(!g){go(0);return}
+    const subs=new Set(all.map(p=>p.folder)).size,ti=el('input',{type:'text',value:easyTitle,placeholder:'พิมพ์หัวเรื่องของรายงาน',oninput:e=>{easyTitle=e.target.value}});
+    main.append(el('div',{class:'ez-title'},el('b',{},'หัวเรื่อง:'),ti),
+      el('div',{class:'ez-help'},el('span',{},'❌ กด ✕ มุมรูป = ไม่ใช้รูปนั้น'),el('span',{},'🔀 ย้ายรูป: กดรูป แล้วกดรูปตำแหน่งที่จะวาง (หรือลากไปวาง)'),el('span',{},'🖼 รูปมีป้าย “แนวนอน” กดป้ายเพื่อปรับ'),el('span',{},'↶ กดผิด กด “เลิกทำ”')));
+    if(subs>1)main.append(el('div',{class:'sw-card wn'},`⚠ โฟลเดอร์ “${jobName}” มีโฟลเดอร์ย่อย ${subs} โฟลเดอร์ รูปทั้งหมดจะรวมเป็นรายงานเดียว ถ้าเลือกผิด กด “← เลือกงานอื่น”`));
+    const pickPos=sel?g.items.findIndex(p=>key(p)===sel):-1;
+    if(pickPos>=0)main.append(el('div',{class:'ez-bar'},el('span',{style:'flex:1'},`เลือกรูปที่ ${pickPos+1} แล้ว → กดรูปตำแหน่งที่จะวาง`),el('button',{onclick:()=>easyMove(pickPos,0)},'ไปไว้แรกสุด'),el('button',{onclick:()=>easyMove(pickPos,g.items.length-1)},'ไปไว้ท้ายสุด'),el('button',{onclick:()=>{sel=null;draw()}},'ยกเลิก')));
+    main.append(el('div',{class:'sw-tools'},el('span',{class:'sw-sub',style:'margin:0'},`ใช้ ${g.use.length} จาก ${g.items.length} รูป · ${g.pages} หน้า`),undoBtnEl(),el('button',{onclick:()=>preview(0)},'👁 ดูตัวอย่างหน้ารายงาน')));
+    const tl=el('div',{class:'sw-tiles'});
+    let u=0;   // นับเฉพาะรูปที่ใช้ → เส้นคั่นหน้าตรงกับรายงานจริง (รูปที่ไม่ใช้ไม่นับ)
+    g.items.forEach((p,pos)=>{const k=key(p),x=excluded.has(k);if(!x){if(u>0&&u%12===0)tl.append(el('div',{class:'sw-pg'},`— หน้า ${u/12+1} เริ่มตรงนี้ —`));u++}
+      const t=el('div',{class:'sw-t'+(x?' x':'')+(sel===k?' pick':''),draggable:'true',title:'กดเพื่อเลือกรูปที่จะย้าย',
+        onclick:()=>{if(pickPos<0){sel=k;draw()}else if(pickPos===pos){sel=null;draw()}else easyMove(pickPos,pos)},
+        ondragstart:e=>{e.dataTransfer.setData('text/plain',String(pos));e.dataTransfer.effectAllowed='move'},
+        ondragover:e=>{e.preventDefault();t.classList.add('drop')},ondragleave:()=>t.classList.remove('drop'),
+        ondrop:e=>{e.preventDefault();t.classList.remove('drop');const from=+e.dataTransfer.getData('text/plain');if(!isNaN(from))easyMove(from,pos)}},
+        Object.assign(el('img',{src:p.thumb||p.url,loading:'lazy'}),{draggable:false}),el('span',{class:'no'},x?'–':String(u)),
+        el('button',{class:'xb',title:x?'ใช้รูปนี้':'ไม่ใช้รูปนี้',onclick:e=>{e.stopPropagation();saveState();x?excluded.delete(k):excluded.add(k);if(sel===k)sel=null;draw()}},x?'↩ ใช้':'✕'));
+      if(x)t.append(el('span',{class:'xl'},'ไม่ใช้'));
+      const A=adj[k];if(!x&&(p.ar>1||A))t.append(el('button',{class:'ez-ls',onclick:e=>{e.stopPropagation();adjustPhoto(p)}},(p.ar>1?'แนวนอน':'ปรับแล้ว')+(A?' ✓':' · ปรับ')));
+      tl.append(t)});
+    main.append(tl);
+    setNext('💾 บันทึก Word',g.use.length>0,'',saveEasy);
+    hintEl.textContent='';if(g.use.length)hintEl.append(el('button',{class:'big',onclick:appendEasy},'📄 ใส่ต่อท้ายรายงาน Word เดิม…'));
+  }
+  const DOCX_T={description:'Word',accept:{'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}};
+  async function saveBlob(blob,name){   // บันทึก: เปิดหน้าต่าง Save ที่โฟลเดอร์งาน (ถ้าได้) · ไม่ได้ → ลง Downloads
+    if(window.showSaveFilePicker){const o={suggestedName:name,types:[DOCX_T]};if(jobDir)o.startIn=jobDir;
+      try{const fh=await window.showSaveFilePicker(o),w=await fh.createWritable();await w.write(blob);await w.close();return {name:fh.name,where:jobDir?`ปกติอยู่ในโฟลเดอร์งาน “${jobDir.name}” (หรือโฟลเดอร์ที่คุณเลือกตอนบันทึก)`:'ในโฟลเดอร์ที่คุณเลือกตอนบันทึก'}}
+      catch(e){if(e.name==='AbortError')return null;if(o.startIn){delete o.startIn;try{const fh=await window.showSaveFilePicker(o),w=await fh.createWritable();await w.write(blob);await w.close();return {name:fh.name,where:'ในโฟลเดอร์ที่คุณเลือกตอนบันทึก'}}catch(e2){if(e2.name==='AbortError')return null}}}}
+    download(name,blob);return {name,where:'ในโฟลเดอร์ Downloads (ดาวน์โหลด) ของเครื่องนี้'}}
+  function easyDone(r,extra){dialog('บันทึกเสร็จแล้ว',el('div',{class:'ez-done'},el('div',{class:'ok'},'✓'),el('div',{class:'fn'},'📄 '+r.name),el('p',{},r.where),extra?el('p',{class:'note'},extra):null,el('p',{class:'note'},'เปิดไฟล์ใน Word ตรวจอีกครั้งก่อนส่งลูกค้า')),[['ตกลง',true]])}
+  async function saveEasy(){const g=groups()[0];if(!g||!g.use.length){toast('ไม่มีรูปที่จะใช้',1);return}if(!easyTitle.trim()&&!await dialog('ยังไม่มีหัวเรื่อง',el('p',{},'รายงานจะไม่มีหัวเรื่อง ต้องการบันทึกต่อไหม?'),[['บันทึกต่อ',true],['กลับไปพิมพ์หัวเรื่อง',false]]))return;
+    try{const blob=await busy('กำลังสร้างไฟล์ Word…',()=>docxOf(g));const r=await saveBlob(blob,(safe(easyTitle)||safe(jobName)||'รายงานรูป')+'.docx');if(r)easyDone(r)}catch(e){console.error(e);toast('บันทึกไม่สำเร็จ: '+(e.message||e),1)}}
+  async function appendEasy(){const g=groups()[0];if(!g||!g.use.length)return;
+    const [f]=await pickFiles('.docx');if(!f)return;let pkg;try{pkg=await readDocx(f)}catch(e){toast(e.message||'เปิดไฟล์ Word ไม่ได้',1);return}
+    const how=await dialog('ใส่รูปลงรายงาน Word เดิม',el('div',{},el('p',{},`ไฟล์: ${f.name}`),el('p',{},`รูป ${g.use.length} รูป (${g.pages} หน้า) จะใส่ต่อท้ายไฟล์ ขึ้นหน้าใหม่`),el('p',{class:'note'},'ไฟล์เดิมไม่ถูกแก้ จะได้ไฟล์ใหม่ชื่อลงท้าย “(ใส่รูป)”')),[['ใส่ต่อท้ายไฟล์',1],['เลือกตำแหน่งเอง…',2],['ยกเลิก',0]]);
+    if(how===2){insertFlow({pkg,fname:f.name});return}if(how!==1)return;
+    try{const blob=await busy('กำลังใส่รูปลงไฟล์ Word…',set=>insertInto(pkg,-1,[g],set));const r=await saveBlob(blob,f.name.replace(/\.docx$/i,'')+' (ใส่รูป).docx');if(r)easyDone(r,'ไฟล์เดิมไม่ถูกแก้')}catch(e){console.error(e);toast('ใส่รูปไม่สำเร็จ: '+(e.message||e),1)}}
   function toggleCut(p){if(p.i===0)return;saveState();cuts.has(key(p))?cuts.delete(key(p)):cuts.add(key(p));draw()}
   async function pickLogo(){return pickAndSetLogo()}
   function preview(gi){const g=groups()[gi];if(!g)return;let pg=0;const modal=el('div',{class:'ov'}),box=el('div',{class:'dlg',style:'max-width:900px'},el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:8px'},el('b',{},g.name),el('span',{class:'note'},`${g.pages} หน้า`),el('button',{onclick:()=>{pg=Math.max(0,pg-1);drawPage()}},'◀'),el('span',{class:'pg'},''),el('button',{onclick:()=>{pg=Math.min(g.pages-1,pg+1);drawPage()}},'▶'),el('button',{style:'margin-left:auto',onclick:()=>modal.remove()},'ปิด')));modal.append(box);document.body.append(modal);const drawPage=()=>{box.querySelector('.pg').textContent=`หน้า ${pg+1}/${g.pages}`;const canvas=el('canvas');canvas.width=794;canvas.height=1123;canvas.style.cssText='display:block;max-height:75vh;max-width:100%;margin:auto';const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);const showHdr=hdrMode==='all'||(hdrMode==='first'&&pg===0);if(showHdr&&logo){const img=new Image();img.onload=()=>{const k=Math.min(189/img.width,50/img.height);c.drawImage(img,45,38,img.width*k,img.height*k)};img.src=URL.createObjectURL(logo.file)}c.fillStyle='#000';c.textAlign='center';c.font='bold 32px "Angsana New",serif';if(showHdr)c.fillText(titleOf(g),397,135);const top=showHdr?159:40;const use=g.use.slice(pg*12,pg*12+12);use.forEach((p,i)=>{const x=40+(i%4)*177,y=top+Math.floor(i/4)*307;const im=new Image();im.onload=()=>drawBox(c,im,x,y,172,302,adj[key(p)]||{});im.src=p.url});canvas.style.cursor='pointer';canvas.title='คลิกรูปเพื่อปรับส่วนที่แสดง';canvas.onclick=e=>{const r=canvas.getBoundingClientRect(),k=canvas.width/r.width,col=Math.floor(((e.clientX-r.left)*k-40)/177),row=Math.floor(((e.clientY-r.top)*k-top)/307);if(col<0||col>3||row<0||row>2)return;const p=use[row*4+col];if(p)adjustPhoto(p).then(ok=>{if(ok)drawPage()})};box.querySelector('canvas')?.remove();box.append(canvas)};drawPage()}
@@ -1822,9 +1893,9 @@ VIEWS.strip=(()=>{
     if(fixAfter){const ty=xkid(fixAfter,NS.w,'type');if(ty&&wv(ty)==='continuous')ty.setAttributeNS(NS.w,'w:val','nextPage')}
     out.set(mp,xser(doc));out.set(relsPath(mp),xser(rels));out.set('[Content_Types].xml',xser(ct));return zip(out,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   }
-  async function insertFlow(){
+  async function insertFlow(pre){   // pre = {pkg,fname} เลือกไฟล์มาแล้ว (จากแบบง่าย) → ข้ามไปขั้นชี้ตำแหน่ง
     const gs=groups().filter(g=>g.use.length);if(!gs.length){toast('ไม่มีรูปที่จะใช้',1);return}
-    let pkg=null,fname='',info=null,pick=null,chosen=new Set(gs.map((_,i)=>i)),q='',scr=1;
+    let pkg=pre&&pre.pkg||null,fname=pre&&pre.fname||'',info=pkg?bodyItems(pkg):null,pick=null,chosen=new Set(gs.map((_,i)=>i)),q='',scr=1;
     const ov=el('div',{class:'ov'}),box=el('div',{class:'dlg',style:'max-width:900px;width:94vw'});ov.append(box);document.body.append(ov);const close=()=>ov.remove();
     const foot=(...b)=>el('div',{style:'display:flex;gap:8px;justify-content:space-between;margin-top:14px'},...b);
     function s1(){box.innerHTML='';box.append(el('h2',{},'แทรกรูปลงรายงาน Word ที่มีอยู่'),el('p',{class:'note'},'ขั้น 1 จาก 2 · เลือกไฟล์ Word และกลุ่มรูปที่จะใส่ (ไฟล์เดิมไม่ถูกแก้ ได้ไฟล์ใหม่)'),
@@ -1842,14 +1913,17 @@ VIEWS.strip=(()=>{
     async function go(){try{const sel=[...chosen].sort((a,b)=>a-b).map(i=>gs[i]);const blob=await busy('กำลังแทรกรูปลงไฟล์ Word…',set=>insertInto(pkg,pick,sel,set)),name=fname.replace(/\.docx$/i,'')+' (ใส่รูป).docx';
       let done=false;if(window.showSaveFilePicker){try{const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:'Word',accept:{'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx']}}]}),w=await h.createWritable();await w.write(blob);await w.close();done=true;toast(`บันทึกแล้ว: ${h.name}`)}catch(e){if(e.name==='AbortError')return}}
       if(!done){download(name,blob);toast(`ได้ไฟล์ ${name} ในโฟลเดอร์ Downloads · ไฟล์เดิมไม่ถูกแก้ · เปิดตรวจใน Word`)}close()}catch(e){console.error(e);toast('แทรกรูปไม่สำเร็จ: '+(e.message||e),1)}}
-    s1();
+    if(pkg&&gs.length===1){scr=2;s2()}else s1();
   }
   function saveCuts(){const data={type:'strip-cuts',list:machineList(),cuts:[...cuts],excluded:[...excluded],names,titles,hdrMode,template,adj,order:all.map(key),folders:[...hidden]};download('การแบ่งเครื่อง.json',new Blob([JSON.stringify(data)],{type:'application/json'}))}
   async function openCuts(){const [f]=await pickFiles('.json,application/json');if(!f)return;try{const d=JSON.parse(await f.text());if(d.type!=='strip-cuts')throw Error('ชนิดไฟล์ไม่ถูกต้อง');if(!all.length){toast('เลือกโฟลเดอร์รูปก่อน แล้วค่อยเปิดงานที่บันทึกไว้',1);return}saveState();cuts=new Set(d.cuts||[]);excluded=new Set(d.excluded||[]);names=d.names||{};titles=d.titles||{};adj=d.adj||{};if(d.hdrMode)hdrMode=d.hdrMode;if(d.template)template=d.template;machines=(d.list||[]).join('\n');hidden=new Set(d.folders||[]);if(d.order)reorder(d.order);photos=all.filter(p=>!hidden.has(p.folder));photos.forEach((p,i)=>p.i=i);step=photos.length?3:0;sel=null;draw()}catch(e){toast('เปิดไฟล์แบ่งเครื่องไม่ได้: '+(e.message||e),1)}}
   function setFiles(files){return load(files)}
   const _dbg={load:setFiles,state:()=>({all:all.length,photos:photos.length,files:photos.map(p=>({key:p.key,folder:p.folder,name:p.f.name,lastModified:p.f.lastModified})),groups:groups().map(g=>({start:g.start,name:g.name,model:g.model,n:g.use.length,pages:g.pages})),hidden:[...hidden]}),setMachines,setTemplate:v=>{template=v;draw()},toggleCut:i=>{if(photos[i])toggleCut(photos[i])},toggleExclude:i=>{if(photos[i]){saveState();excluded.has(key(photos[i]))?excluded.delete(key(photos[i])):excluded.add(key(photos[i]));draw()}},setHidden:a=>{hidden=new Set(a);applyFilter()},setAdj:(i,a)=>{if(photos[i]){adj[key(photos[i])]=a;draw()}},adjState:()=>adj,setLogoBlob:async blob=>{const f=new File([blob],'logo.png',{type:'image/png'});const b=await createImageBitmap(f);logo={file:f,width:b.width,height:b.height,bytes:new Uint8Array(await f.arrayBuffer()),ext:'png'};b.close?.()},buildAll,docxOf,draw,leave,go,insertInto:(pkg,idx,gi)=>{const gs=groups().filter(g=>g.use.length);return insertInto(pkg,idx,(gi||gs.map((_,i)=>i)).map(i=>gs[i]),()=>{})},bodyItems,setHdr:v=>{hdrMode=v;draw()},titlesState:()=>titles,order:()=>all.map(p=>p.key),moveInGroup,moveToGroup,exportReports};
-  return {title:'แถบรูปแบ่งเครื่อง',enter,leave,dirty:()=>false,_dbg};
+  Object.assign(_dbg,{easyLoad:async(files,name)=>{jobDir=null;jobName=cleanJob(name);await load(files);easyTitle=jobName;step=1;sel=null;draw()},easyMove,easyState:()=>({easy,step,title:easyTitle,job:jobName,sel}),setEasyTitle:v=>{easyTitle=v},easyDocx:()=>docxOf(groups()[0]),appendEasyBlob:pkg=>insertInto(pkg,-1,[groups()[0]],()=>{})});
+  const easyView={title:'ทำรายงานรูป (แบบง่าย)',enter:app=>enter(app,true),leave,dirty:()=>false,_dbg};
+  return {title:'แถบรูปแบ่งเครื่อง',enter:app=>enter(app,false),leave,dirty:()=>false,_dbg,easyView};
 })();
+VIEWS.easy=VIEWS.strip.easyView;
 
 boot();
 </script>
