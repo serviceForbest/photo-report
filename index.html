@@ -1184,7 +1184,7 @@ VIEWS.word=(()=>{
 /* ================= ทำหน้ารูปภาพ ================= */
 VIEWS.photo=(()=>{
   const LAY={cols:3,rows:3,k:100,ratio:'fill',pos:'top',hgap:3,rgap:4,cgap:4};
-  const DEF={name:'แม่แบบใหม่',title:'รายงานภาพถ่ายการปฏิบัติงาน',sub:'โครงการ: \nสถานที่: \nวันที่: ',logo:'',logoH:17,font:'Angsana New',tPt:18,sPt:18,sBold:true,hdrAll:true,footer:'',
+  const DEF={name:'แม่แบบใหม่',title:'รายงานภาพถ่ายการปฏิบัติงาน',sub:'โครงการ: \nสถานที่: \nวันที่: ',logo:'',logoH:17,font:'Angsana New',tPt:18,sPt:18,sBold:true,hdrAll:true,logoAll:true,footer:'',
     page:{land:false,w:210,h:297,mt:10,mb:10,ml:12,mr:12},cap:true,num:true,numPrefix:'รูปที่',numMode:'all',capName:false,cfs:11,fit:'cover',frame:true,lay:LAY,from:''};
   const clone=o=>JSON.parse(JSON.stringify(o));
   let S=Object.assign(clone(DEF),ls.get('photoCurrent',{}));
@@ -1213,15 +1213,15 @@ VIEWS.photo=(()=>{
   const geo=()=>{const p=S.page,W=p.land?Math.max(p.w,p.h):Math.min(p.w,p.h),H=p.land?Math.min(p.w,p.h):Math.max(p.w,p.h);let mb=p.mb;if(S.footer.trim())mb=Math.max(mb,5+10*PT*LH+1.5);return {W,H,mt:p.mt,mb,ml:p.ml,mr:p.mr,bw:W-p.ml-p.mr}};
   let logoAR=3;
   function logoBox(){const h=S.logoH||17,w=Math.min(60,h*logoAR);return {w,h:w/logoAR}}
-  function header(g){
+  function header(g,o={}){   // o.noLogo / o.noText = หน้าถัดไปที่ไม่แสดงโลโก้ / หัวเรื่อง
     const G=geo(),lines=[];let H=0;const t=(g.title||'').trim(),subs=(g.sub||'').replace(/\s+$/,'').split('\n').filter((s,i,a)=>a.length>1||s.trim());
-    const logo=S.logo?logoBox():null;if(logo)H+=logo.h+LGAP;
-    for(const l of wrap(t,S.tPt,true,G.bw))lines.push({text:l,pt:S.tPt,bold:true});
+    const logo=S.logo&&!o.noLogo?logoBox():null;if(logo)H+=logo.h+LGAP;
+    if(!o.noText)for(const l of wrap(t,S.tPt,true,G.bw))lines.push({text:l,pt:S.tPt,bold:true});
     if(t&&subs.length&&lines.length){lines.at(-1).gap=TGAP}
-    for(const s of subs){const w=wrap(s,S.sPt,S.sBold,G.bw);(w.length?w:['']).forEach(l=>lines.push({text:l,pt:S.sPt,bold:S.sBold}))}
+    if(!o.noText)for(const s of subs){const w=wrap(s,S.sPt,S.sBold,G.bw);(w.length?w:['']).forEach(l=>lines.push({text:l,pt:S.sPt,bold:S.sBold}))}
     for(const l of lines)H+=l.pt*LH*PT+(l.gap||0);
-    if(!logo&&!lines.length)return {H:0,lines,logo};
-    return {H:H+(g.lay.hgap??3),lines,logo};
+    if(!logo&&!lines.length)return {H:0,lines,logo,noText:!!o.noText};
+    return {H:H+(g.lay.hgap??3),lines,logo,noText:!!o.noText};
   }
   function slots(g,hasHdr,hdr){
     const G=geo(),L=g.lay,cols=Math.max(1,L.cols|0),rows=Math.max(1,L.rows|0),k=Math.max(.3,Math.min(1,(L.k||100)/100));
@@ -1244,7 +1244,9 @@ VIEWS.photo=(()=>{
     let sw=p.w,sh=p.h;if(I>B)sw=p.h*B;else sh=p.w/B;const fx=p.fx??.5,fy=p.fy??.5;
     return {sx:(p.w-sw)*fx,sy:(p.h-sh)*fy,sw,sh,dx:0,dy:0,dw:bw,dh:bh}}
   // รายการหน้าทั้งหมด
-  function allPages(){const out=[];groups.forEach((g,gi)=>{const hdr=header(g),np=pagesOf(g);for(let pg=0;pg<np;pg++){const hh=pg===0||S.hdrAll;const L=slots(g,hh,hdr);out.push({g,gi,pg,np,hh,hdr,L,items:g.photos.slice(pg*L.per,(pg+1)*L.per)})}});return out}
+  // หน้าถัดไป: หัวเรื่องตาม hdrAll · โลโก้ตาม logoAll (ไม่เคยตั้ง = ตามหัวเรื่อง เหมือนเดิม)
+  const logoNext=()=>!!S.logo&&(S.logoAll??S.hdrAll);
+  function allPages(){const out=[];groups.forEach((g,gi)=>{const hdr=header(g),txt=S.hdrAll,lg=logoNext(),hdrN=txt&&(lg||!S.logo)?hdr:header(g,{noLogo:!lg,noText:!txt}),np=pagesOf(g);for(let pg=0;pg<np;pg++){const hh=pg===0||txt||lg,hd=pg===0?hdr:hdrN;const L=slots(g,hh,hd);out.push({g,gi,pg,np,hh,hdr:hd,L,items:g.photos.slice(pg*L.per,(pg+1)*L.per)})}});return out}
 
   /* ---------- หน้าจอ ---------- */
   function enter(app){
@@ -1288,7 +1290,7 @@ VIEWS.photo=(()=>{
       t.addEventListener('input',()=>{g.title=t.innerText.replace(/\n+/g,' ');changed()});t.addEventListener('blur',()=>draw());t.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();t.blur()}});
       const s=el('div',{class:'s',contentEditable:'true',spellcheck:false,'data-ph':'รายละเอียด (Enter = ขึ้นบรรทัดใหม่)',style:hdr.lines.some(l=>l.gap)?`margin-top:${TGAP}mm`:''},g.sub);
       s.addEventListener('input',()=>{g.sub=s.innerText.replace(/\n$/,'');changed()});s.addEventListener('blur',()=>draw());
-      h.append(t,s);pp.append(h);
+      if(!hdr.noText)h.append(t,s);pp.append(h);
     }
     L.slots.forEach((sl,i)=>{
       const idx=pg*L.per+i,p=g.photos[idx];
@@ -1361,6 +1363,8 @@ VIEWS.photo=(()=>{
       el('h2',{style:'margin-bottom:2px'},S.name&&templates()[S.name]?S.name:'ทำรายงานรูป'),el('p',{class:'note',style:'margin:0'},`${total()} รูป · ${np} หน้า`+(groups.length>1?` · ${groups.length} กลุ่ม`:'')),
       trash.length?el('button',{class:'sm',style:'margin-top:8px',onclick:()=>{const t=trash.pop();t.g.photos.splice(Math.min(t.idx,t.g.photos.length),0,t.p);changed();draw()}},`↶ เอารูปที่ลบคืน (${trash.length})`):null,
       el('h3',{},'รูปต่อหน้า'),chips([[[2,2],'4'],[[2,3],'6'],[[3,3],'9'],[[4,3],'12']],([c,r])=>L.cols===c&&L.rows===r,([c,r])=>{groups.forEach(g=>{g.lay.cols=c;g.lay.rows=r});S.lay.cols=c;S.lay.rows=r;saveCur();draw()}),
+      el('h3',{},'หัวเรื่อง'),chips([[true,'ทุกหน้า'],[false,'หน้าแรกเท่านั้น']],v=>!!S.hdrAll===v,v=>{S.hdrAll=v;saveCur();draw()}),
+      S.logo?el('h3',{},'โลโก้'):null,S.logo?chips([[true,'ทุกหน้า'],[false,'หน้าแรกเท่านั้น']],v=>logoNext()===v,v=>{S.logoAll=v;saveCur();draw()}):null,
       el('details',{style:'margin-top:12px',open:detOpen,ontoggle:e=>{detOpen=e.target.open}},el('summary',{style:'cursor:pointer;font-weight:600;font-size:14px'},'📐 ขนาดรูปและระยะห่าง'),
         el('h3',{},'ตำแหน่งกลุ่มรูป'),chips([['top','ชิดใต้หัวเรื่อง'],['center','กลางหน้า'],['spread','กระจายเต็มหน้า']],v=>L.pos===v,v=>setAll('pos',v,true)),
         el('h3',{},'ขนาดรูป'),rng('k',50,100,'%','ขนาด'),
@@ -1408,7 +1412,7 @@ VIEWS.photo=(()=>{
         el('button',{class:'sm',style:'margin-top:6px',onclick:()=>{groups.forEach(g=>{g.title=S.title;g.sub=S.sub});changed();draw()}},'ใช้หัวเรื่องนี้กับทุกกลุ่ม'),
         el('label',{class:'lb'},'ฟอนต์'),fontSelect(S.font,f=>{S.font=f;saveCur();drawPapers()}),
         el('div',{class:'row'},el('div',{},el('label',{class:'lb'},'หัวเรื่อง (pt)'),inp('tPt',{type:'number',min:8,max:40})),el('div',{},el('label',{class:'lb'},'รายละเอียด (pt)'),inp('sPt',{type:'number',min:8,max:40}))),
-        chk('sBold','รายละเอียดเป็นตัวหนา'),chk('hdrAll','แสดงหัวเรื่องซ้ำทุกหน้าของกลุ่ม'),
+        chk('sBold','รายละเอียดเป็นตัวหนา'),chk('hdrAll','แสดงหัวเรื่องซ้ำทุกหน้าของกลุ่ม'),S.logo?el('label',{class:'ck'},el('input',{type:'checkbox',checked:logoNext(),onchange:e=>{S.logoAll=e.target.checked;saveCur();drawPapers()}}),'แสดงโลโก้ทุกหน้า'):null,
         el('label',{class:'lb'},'โลโก้ (มุมซ้ายบน)'),el('div',{style:'display:flex;gap:6px;align-items:center'},S.logo?el('img',{src:S.logo,style:'max-height:36px;max-width:110px;border:1px solid var(--line);border-radius:4px'}):null,
           el('button',{class:'sm',onclick:pickLogo},S.logo?'เปลี่ยน':'เลือกรูปโลโก้'),S.logo?el('button',{class:'sm',onclick:()=>{S.logo='';saveCur();draw()}},'ลบ'):null),
         S.logo?el('div',{},el('label',{class:'lb'},'ความสูงโลโก้ (มม.)'),el('input',{type:'number',min:6,max:40,value:S.logoH,oninput:e=>{S.logoH=+e.target.value||17;saveCur();drawPapers()}})):null,
@@ -1514,7 +1518,7 @@ VIEWS.photo=(()=>{
   function loadLogoAR(){if(!S.logo)return;const i=new Image();i.onload=()=>{logoAR=i.naturalWidth/i.naturalHeight;if(main&&main.isConnected)drawPapers()};i.src=S.logo}
 
   /* ---------- แม่แบบ ---------- */
-  const tplKeys=['name','title','sub','logo','logoH','font','tPt','sPt','sBold','hdrAll','footer','page','cap','num','numPrefix','numMode','capName','cfs','fit','frame','lay','from'];
+  const tplKeys=['name','title','sub','logo','logoH','font','tPt','sPt','sBold','hdrAll','logoAll','footer','page','cap','num','numPrefix','numMode','capName','cfs','fit','frame','lay','from'];
   const templates=()=>ls.get('photoTemplates',{});
   function applyTpl(t){Object.assign(S,clone(DEF),clone(t));saveCur();loadLogoAR();groups.forEach(g=>{if(!g.photos.length||confirmTitles){g.title=S.title;g.sub=S.sub}g.lay=clone(S.lay)});draw();toast(`ใช้แม่แบบ “${S.name}” แล้ว`)}
   let confirmTitles=false;
